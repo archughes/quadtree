@@ -46,8 +46,14 @@ export class EllipsoidMesh {
         const y = this.b * Math.sin(theta) * Math.sin(phi);
         const z = this.c * Math.cos(theta);
         const base = new THREE.Vector3(x, y, z);
-        const height = this.terrain.getHeight(theta, phi, level);
-        return base.multiplyScalar(1 + height); // Scale radially by height
+        const terrainData = this.terrain.getHeight(theta, phi, level);
+        const height = isNaN(terrainData.height) ? 0 : terrainData.height; // Fallback to 0 if NaN
+        const scaled = base.multiplyScalar(1 + height);
+        if (isNaN(scaled.x) || isNaN(scaled.y) || isNaN(scaled.z)) {
+            console.warn(`NaN detected at theta=${theta}, phi=${phi}, level=${level}, height=${height}`);
+            return new THREE.Vector3(this.a, 0, 0); // Default to a safe position
+        }
+        return scaled;
     }
 
     /**

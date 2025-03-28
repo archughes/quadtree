@@ -30,6 +30,11 @@ const ellipsoidMesh = new EllipsoidMesh(
     'planetSeed123',
     terrainConfig
 );
+
+// Update camera far clipping plane to match max LOD distance
+camera.far = 2 * ellipsoidMesh.lodDistances[ellipsoidMesh.lodDistances.length - 1];
+camera.updateProjectionMatrix();
+
 let geometry = ellipsoidMesh.generateGeometry(camera.position);
 const material = new THREE.MeshPhongMaterial({ color: 0xaaaaaa, specular: 0xffffff, shininess: 50, side: THREE.DoubleSide });
 const mesh = new THREE.Mesh(geometry, material);
@@ -41,6 +46,9 @@ const sliders = {
     elevation: document.getElementById('elevation'),
     altitude: document.getElementById('altitude'),
 };
+const maxAltitude = 2 * ellipsoidMesh.lodDistances[ellipsoidMesh.lodDistances.length - 1];
+sliders.altitude.max = maxAltitude;
+sliders.altitude.value = maxAltitude / 2;
 const cameraController = new CameraController(camera, sliders);
 
 // Slider readouts
