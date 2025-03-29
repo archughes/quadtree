@@ -3,6 +3,7 @@ import { TerrainGenerator } from './TerrainGenerator.js';
 import { TerrainColorManager } from './TerrainColorManager.js';
 import { createNoise2D } from 'https://cdn.skypack.dev/simplex-noise';
 import createSeededRNG from 'https://cdn.jsdelivr.net/npm/random-seed@0.3.0/+esm';
+import { trackAnalytics, logAnalytics } from './ellipseUtils.js';
 
 export class EllipsoidMesh {
     /**
@@ -32,6 +33,15 @@ export class EllipsoidMesh {
         this.terrain = new TerrainGenerator(this.noise, seed, terrainConfig); // Delegate terrain generation
         this.terrainColorManager = new TerrainColorManager();
         this.terrainColorManager.setConfig(terrainConfig, this.noise);
+        
+        // Store analytics data during generation
+        this.analyticsData = {
+            colorCounts: {},
+            featureCounts: {},
+            temperatureValues: [],
+            heightValues: [],
+            featureMap: new Map() // For tracking contiguous features
+        };
     }
 
     /**
@@ -143,6 +153,9 @@ export class EllipsoidMesh {
         const [vertex, terrainData] = this.mapToEllipsoid(theta, phi, level);
         const color = this.terrainColorManager.getColor(terrainData, theta, phi);
 
+        // Track analytics data using the utility function
+        trackAnalytics(this.analyticsData, color, terrainData, theta, phi);
+
         const index = positions.length / 3;
         positions.push(vertex.x, vertex.y, vertex.z);
         colors.push(color[0] / 255, color[1] / 255, color[2] / 255);
@@ -156,6 +169,15 @@ export class EllipsoidMesh {
      * @returns {THREE.BufferGeometry} - Generated geometry
      */
     generateGeometry(cameraPos) {
+        // Reset analytics data
+        this.analyticsData = {
+            colorCounts: {},
+            featureCounts: {},
+            temperatureValues: [],
+            heightValues: [],
+            featureMap: new Map()
+        };
+        
         this.root.children.clear(); // Changed from = []
         this.vertexMap.clear();
         this.buildTree(this.root, cameraPos);
@@ -183,6 +205,12 @@ export class EllipsoidMesh {
         geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
         geometry.setIndex(indices);
         geometry.computeVertexNormals();
+        
+        // Log analytics data using the utility function
+        console.log("===== MESH GENERATION ANALYTICS =====");
+        logAnalytics(this.analyticsData);
+        console.log("===== END ANALYTICS =====");
+        
         return geometry;
     }
 }
