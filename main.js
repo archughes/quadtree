@@ -190,12 +190,21 @@ sliders.altitude.addEventListener('input', updateMesh);
 updateMesh();
 
 // Animation loop
+let lastCameraPosition = new THREE.Vector3();
+
 function animate() {
     requestAnimationFrame(animate);
+
     if (isSurfaceMode) {
         orbitControls.update();
-        updateMesh(); // Update mesh based on new camera position
+
+        // Check if the camera has moved
+        if (!camera.position.equals(lastCameraPosition)) {
+            updateMesh();
+            lastCameraPosition.copy(camera.position); // Store new position
+        }
     }
+
     renderer.render(scene, camera);
 }
 animate();
