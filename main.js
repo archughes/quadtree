@@ -33,6 +33,7 @@ const ellipsoidMesh = new EllipsoidMesh(
 
 // Update camera far clipping plane to match max LOD distance
 camera.far = 2 * ellipsoidMesh.lodDistances[ellipsoidMesh.lodDistances.length - 1];
+camera.position.set(camera.far / 2, 0, 0);
 camera.updateProjectionMatrix();
 
 let geometry = ellipsoidMesh.generateGeometry(camera.position);
@@ -46,7 +47,7 @@ const sliders = {
     elevation: document.getElementById('elevation'),
     altitude: document.getElementById('altitude'),
 };
-const maxAltitude = 2 * ellipsoidMesh.lodDistances[ellipsoidMesh.lodDistances.length - 1];
+const maxAltitude = camera.far;
 sliders.altitude.max = maxAltitude;
 sliders.altitude.value = maxAltitude / 2;
 const cameraController = new CameraController(camera, sliders);

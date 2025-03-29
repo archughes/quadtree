@@ -13,9 +13,9 @@ export class CameraController {
             altitude: sliders.altitude,
         };
         this.values = {
-            azimuthAngle: 0,
-            elevationAngle: 0,
-            altitude: 5,
+            azimuthAngle: (this.sliders.azimuth.value / 180) * Math.PI,
+            elevationAngle: (this.sliders.elevation.value / 180) * Math.PI,
+            altitude: parseFloat(this.sliders.altitude.value),
         };
         this.minDistance = 2; // Default minimum distance
         this.initializeSliders();
