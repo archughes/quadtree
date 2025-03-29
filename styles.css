@@ -1,15 +1,45 @@
 body {
     margin: 0;
-    background: #222;
-}
-
-canvas {
-    display: block;
+    overflow: hidden; /* Prevents scrollbars from interfering with the 3D scene */
 }
 
 #controls {
     position: absolute;
     top: 10px;
     left: 10px;
+    background: rgba(255, 255, 255, 0.9); /* Slightly more opaque for visibility */
+    padding: 15px;
+    border-radius: 5px;
+    z-index: 100; /* Ensures it stays above the canvas */
+    font-family: Arial, sans-serif;
+}
+
+#controls label {
+    margin-right: 5px;
+}
+
+#controls input[type="range"] {
+    width: 100px;
+    margin: 5px 0;
+}
+
+#controls span {
+    margin-left: 5px;
+    min-width: 20px;
+    display: inline-block;
+}
+
+button {
+    margin-top: 10px;
+    padding: 5px 10px;
+    background-color: #4CAF50; /* Green background */
     color: white;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+    width: 100%; /* Makes button span the controls width */
+}
+
+button:hover {
+    background-color: #45a049; /* Darker green on hover */
 }

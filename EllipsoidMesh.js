@@ -47,13 +47,13 @@ export class EllipsoidMesh {
         const z = this.c * Math.cos(theta);
         const base = new THREE.Vector3(x, y, z);
         const terrainData = this.terrain.getHeight(theta, phi, level);
-        const height = isNaN(terrainData.height) ? 0 : terrainData.height; // Fallback to 0 if NaN
+        const height = terrainData.height;
         const scaled = base.multiplyScalar(1 + height);
         if (isNaN(scaled.x) || isNaN(scaled.y) || isNaN(scaled.z)) {
             console.warn(`NaN detected at theta=${theta}, phi=${phi}, level=${level}, height=${height}`);
             return new THREE.Vector3(this.a, 0, 0); // Default to a safe position
         }
-        return scaled;
+        return [scaled, terrainData];
     }
 
     /**
@@ -78,12 +78,12 @@ export class EllipsoidMesh {
     buildTree(node, cameraPos) {
         const thetaCenter = (node.thetaMin + node.thetaMax) / 2;
         const phiCenter = (node.phiMin + node.phiMax) / 2;
-        const centerPos = this.mapToEllipsoid(thetaCenter, phiCenter, node.level);
+        const [centerPos, terrainData] = this.mapToEllipsoid(thetaCenter, phiCenter, node.level);
         const distance = centerPos.distanceTo(cameraPos);
         const desiredLevel = this.getDesiredLevel(distance);
         if (node.level < desiredLevel && node.level < this.maxLevel) {
             node.subdivide(this.terrain);
-            for (const child of node.children) {
+            for (const child of node.children.values()) {
                 this.buildTree(child, cameraPos);
             }
         }
@@ -98,7 +98,7 @@ export class EllipsoidMesh {
         if (node.isLeaf()) {
             leaves.push(node);
         } else {
-            for (const child of node.children) {
+            for (const child of node.children.values()) {
                 this.collectLeafNodes(child, leaves);
             }
         }
@@ -140,8 +140,7 @@ export class EllipsoidMesh {
         const key = this.getVertexKey(theta, phi);
         if (this.vertexMap.has(key)) return this.vertexMap.get(key);
 
-        const terrainData = this.terrain.getHeight(theta, phi, level);
-        const vertex = this.mapToEllipsoid(theta, phi, level, terrainData.height);
+        const [vertex, terrainData] = this.mapToEllipsoid(theta, phi, level);
         const color = this.terrainColorManager.getColor(terrainData, theta, phi);
 
         const index = positions.length / 3;
@@ -157,7 +156,7 @@ export class EllipsoidMesh {
      * @returns {THREE.BufferGeometry} - Generated geometry
      */
     generateGeometry(cameraPos) {
-        this.root.children = [];
+        this.root.children.clear(); // Changed from = []
         this.vertexMap.clear();
         this.buildTree(this.root, cameraPos);
         QuadtreeNode.balanceTree(this.root);
