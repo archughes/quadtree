@@ -77,6 +77,7 @@ export class TerrainGenerator {
                 baseHeight += this.computeMeteorCraters(theta, phi, features);
                 baseHeight += this.computeVolcanoes(theta, phi, features, temperature);
                 baseHeight += this.computeTectonicPlates(theta, phi, features);
+                baseHeight += this.computeVastPlains(theta, phi, baseHeight, features);
                 baseHeight += this.computeMagneticAnomalies(theta, phi, features);
                 baseHeight += this.computeLavaFlows(theta, phi, baseHeight, features, temperature);
                 baseHeight += this.computeDesertPavement(theta, phi, baseHeight, features, temperature);
@@ -294,6 +295,47 @@ export class TerrainGenerator {
                 return this.config.baseAmplitude * 0.3 * foothillNoise;
             }
         }
+        return 0;
+    }
+
+    /**
+     * Generates vast plains with varying roughness
+     * @param {number} theta - Elevation angle
+     * @param {number} phi - Azimuth angle
+     * @param {number} baseHeight - Current base height
+     * @param {string[]} features - Array to store feature labels
+     * @returns {number} - Height adjustment
+     */
+    computeVastPlains(theta, phi, baseHeight, features) {
+        // Use a lower frequency noise to determine plain locations
+        const plainLocationNoise = this.noise(theta * 0.5, phi * 0.5 + 7000);
+        
+        // If the noise value falls in a specific range, we've found a plain
+        if (plainLocationNoise > 0.2 && plainLocationNoise < 0.6) {
+            // Determine plain size (50-200 units)
+            const plainSize = 50 + Math.floor(plainLocationNoise * 300);
+            
+            // Determine plain "rumblyness" - from flat to somewhat rumbled
+            const rumblyness = Math.pow(this.noise(theta * 0.3, phi * 0.3 + 8000), 2) * 0.08;
+            
+            // Add plain feature
+            features.push('plain');
+            
+            // Generate the plain's surface
+            const plainNoise = this.noise(theta * rumblyness * 50, phi * rumblyness * 50 + 9000);
+            
+            // Plain height should be close to a flat reference height with slight variations
+            const plainBaseHeight = -0.02 + plainLocationNoise * 0.08;
+            const plainHeight = plainBaseHeight + plainNoise * rumblyness;
+            
+            // Blend current height toward plain height using a distance-based factor
+            const distanceToPlainCenter = Math.abs(plainLocationNoise - 0.4) / 0.2;
+            const blendFactor = Math.max(0, 1 - distanceToPlainCenter);
+            
+            // Return adjustment that moves toward plain height
+            return (plainHeight - baseHeight) * blendFactor;
+        }
+        
         return 0;
     }
 

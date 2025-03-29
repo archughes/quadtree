@@ -23,6 +23,7 @@ export class TerrainColorManager {
             crater: [50, 50, 50],          // Dark grey
             volcano: [90, 70, 60],         // Reddish brown
             tectonic_plate: [110, 90, 70], // Tan
+            plain: [180, 160, 120],        // Muted brown
             magnetic_anomaly: [180, 140, 200], // Purplish
             valley: [90, 110, 70],         // Muted green
             river: [70, 90, 120],          // Grey-blue
