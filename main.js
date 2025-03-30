@@ -1,4 +1,4 @@
-import { EllipsoidMesh } from './EllipsoidMesh.js';
+import { EllipsoidMesh } from './terrain/EllipsoidMesh.js';
 import { CameraController } from './CameraController.js';
 import { OrbitControls } from './OrbitControls.js';
 
