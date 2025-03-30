@@ -34,11 +34,6 @@ export class TerrainGenerator {
         this.coarseHeightMap = new Map();
         this.featureMap = new Map();
         this.biomeDefinitions = this.defineBiomes();
-        this.featureMinLOD = {
-            tectonic_plate: 2, volcano: 2, crater: 2, magnetic_anomaly: 2, lava_flow: 2, desert_pavement: 2,
-            highland: 4, rift: 4, sand_dune: 4, glacial: 4, karst: 4, wetland: 4, permafrost: 4, oasis: 4,
-            valley: 5, river: 5, tributary: 5, mouth: 5, foothill: 5, coral_reef: 5, fumarole: 5
-        };
         this.temperatureManager = new TerrainTemperatureManager(config);
     }
 
@@ -57,13 +52,13 @@ export class TerrainGenerator {
     }
 
     /**
-     * Computes hierarchical procedural height, features, and temperature for a given position and LOD level.
+     * Computes hierarchical procedural height, features, and temperature for a given position and distance.
      * @param {number} theta - Elevation angle
      * @param {number} phi - Azimuth angle
-     * @param {number} level - LOD level (0 is coarsest)
+     * @param {number} distance - Distance from camera to point
      * @returns {Object} - { height, features, temperature }
      */
-    getHeight(theta, phi, level) {
+    getHeight(theta, phi, distance) {
         const coarseKey = this.getCoarseKey(theta, phi);
         let result;
 
@@ -73,7 +68,7 @@ export class TerrainGenerator {
             const tempData = { height: baseHeight, features };
             const temperature = this.temperatureManager.getTemperature(tempData, theta, phi);
 
-            if (level >= 2) {
+            if (distance < 600) {
                 baseHeight += this.computeMeteorCraters(theta, phi, features);
                 baseHeight += this.computeVolcanoes(theta, phi, features, temperature);
                 baseHeight += this.computeTectonicPlates(theta, phi, features);
@@ -83,7 +78,7 @@ export class TerrainGenerator {
                 baseHeight += this.computeDesertPavement(theta, phi, baseHeight, features, temperature);
             }
 
-            if (level >= 4) {
+            if (distance < 200) {
                 baseHeight += this.computeSandDunes(theta, phi, baseHeight, features, temperature);
                 baseHeight += this.computeGlacialFeatures(theta, phi, baseHeight, features, temperature);
                 baseHeight += this.computeKarstTopography(theta, phi, baseHeight, features);
@@ -92,7 +87,7 @@ export class TerrainGenerator {
                 baseHeight += this.computeOases(theta, phi, baseHeight, features, temperature);
             }
 
-            if (level >= 5) {
+            if (distance < 100) {
                 baseHeight += this.computeFoothills(theta, phi, baseHeight, features);
                 baseHeight += this.computeValleysAndRivers(theta, phi, baseHeight, features);
                 baseHeight += this.computeFumaroles(theta, phi, baseHeight, features, temperature);
@@ -109,8 +104,8 @@ export class TerrainGenerator {
             baseHeight *= (1 - this.config.erosionFactor * age);
 
             let height = baseHeight;
-            if (level > 0) {
-                height += this.computeDetail(theta, phi, level);
+            if (distance < 1200) {
+                height += this.computeDetail(theta, phi, distance);
             }
 
             if (this.config.waterLevel > 0 && height < this.config.waterLevel) {
@@ -123,8 +118,8 @@ export class TerrainGenerator {
             this.featureMap.set(coarseKey, result);
         } else {
             result = this.featureMap.get(coarseKey);
-            if (level > this.minLevel && result.features.length > 0) {
-                result.height = result.height - this.computeDetail(theta, phi, this.minLevel) + this.computeDetail(theta, phi, level);
+            if (distance < 1200 && result.features.length > 0) {  // Adjust detail based on distance
+                result.height = result.height - this.computeDetail(theta, phi, 1200) + this.computeDetail(theta, phi, distance);
             }
         }
 
@@ -195,11 +190,11 @@ export class TerrainGenerator {
      * Computes height detail using noise.
      * @param {number} theta - Elevation angle
      * @param {number} phi - Azimuth angle
-     * @param {number} level - LOD level (0 is coarsest)
+     * @param {number} distance - Distance from camera
      * @returns {number} - Height detail
      */
-    computeDetail(theta, phi, level) {
-        const scale = 1 / Math.pow(2, level);
+    computeDetail(theta, phi, distance) {
+        const scale = 1 / Math.pow(2, distance);
         let detail = 0;
         const biome = this.getBiome(theta, phi, this.computeBaseHeight(theta, phi));
         const params = this.biomeDefinitions[biome];

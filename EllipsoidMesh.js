@@ -48,20 +48,20 @@ export class EllipsoidMesh {
      * Maps spherical coordinates to ellipsoid surface with terrain offset.
      * @param {number} theta - Elevation angle
      * @param {number} phi - Azimuth angle
-     * @param {number} level - LOD level for height detail
-     * @returns {THREE.Vector3} - Position on ellipsoid with terrain
+     * @param {number} distance - Distance from camera for LOD calculation
+     * @returns {Array} - [Position on ellipsoid with terrain, terrainData]
      */
-    mapToEllipsoid(theta, phi, level) {
+    mapToEllipsoid(theta, phi, distance) {
         const x = this.a * Math.sin(theta) * Math.cos(phi);
         const y = this.b * Math.sin(theta) * Math.sin(phi);
         const z = this.c * Math.cos(theta);
         const base = new THREE.Vector3(x, y, z);
-        const terrainData = this.terrain.getHeight(theta, phi, level);
+        const terrainData = this.terrain.getHeight(theta, phi, distance); // Pass distance instead of level
         const height = terrainData.height;
-        const scaled = base.multiplyScalar(1 + height);
+        const scaled = base.clone().multiplyScalar(1 + height); // Use clone() to avoid modifying original base
         if (isNaN(scaled.x) || isNaN(scaled.y) || isNaN(scaled.z)) {
-            console.warn(`NaN detected at theta=${theta}, phi=${phi}, level=${level}, height=${height}`);
-            return new THREE.Vector3(this.a, 0, 0); // Default to a safe position
+            console.warn(`NaN detected at theta=${theta}, phi=${phi}, distance=${distance}, height=${height}`);
+            return [new THREE.Vector3(this.a, 0, 0), { height: 0, features: [], temperature: 0 }]; // Return default terrainData too
         }
         return [scaled, terrainData];
     }
@@ -81,6 +81,32 @@ export class EllipsoidMesh {
     }
 
     /**
+     * Helper function to calculate distance from camera to a point on the ellipsoid,
+     * considering coarse terrain height for accuracy.
+     * @param {number} theta
+     * @param {number} phi
+     * @param {THREE.Vector3} cameraPos
+     * @param {object | null} baseHeightData - The baseHeight object from the node ({height, features, temperature}) or null.
+     * @returns {number} Distance
+     */
+    _calculateDistanceToCamera(theta, phi, cameraPos, baseHeightData) {
+        // Calculate base position on the ellipsoid
+        const x = this.a * Math.sin(theta) * Math.cos(phi);
+        const y = this.b * Math.sin(theta) * Math.sin(phi);
+        const z = this.c * Math.cos(theta);
+        const basePos = new THREE.Vector3(x, y, z);
+
+        // Use coarse height from node if available, otherwise default to 0
+        const coarseHeight = baseHeightData?.height || 0;
+
+        // Scale the base position by the coarse terrain height
+        const scaledPos = basePos.clone().multiplyScalar(1 + coarseHeight);
+
+        // Calculate distance from the scaled position
+        return scaledPos.distanceTo(cameraPos);
+    }
+
+    /**
      * Recursively builds the quadtree based on camera position.
      * @param {QuadtreeNode} node - Current node to process
      * @param {THREE.Vector3} cameraPos - Camera position
@@ -88,9 +114,11 @@ export class EllipsoidMesh {
     buildTree(node, cameraPos) {
         const thetaCenter = (node.thetaMin + node.thetaMax) / 2;
         const phiCenter = (node.phiMin + node.phiMax) / 2;
-        const [centerPos, terrainData] = this.mapToEllipsoid(thetaCenter, phiCenter, node.level);
-        const distance = centerPos.distanceTo(cameraPos);
+
+        // Use helper to calculate distance
+        const distance = this._calculateDistanceToCamera(thetaCenter, phiCenter, cameraPos, node.baseHeight);
         const desiredLevel = this.getDesiredLevel(distance);
+
         if (node.level < desiredLevel && node.level < this.maxLevel) {
             node.subdivide(this.terrain);
             for (const child of node.children.values()) {
@@ -141,16 +169,22 @@ export class EllipsoidMesh {
     /**
      * Adds a vertex to the positions array, reusing if already present.
      * @param {number[]} positions - Array of vertex coordinates
+     * @param {number[]} colors - Array of vertex colors
      * @param {number} theta - Elevation angle
      * @param {number} phi - Azimuth angle
-     * @param {number} level - LOD level for terrain detail
+     * @param {THREE.Vector3} cameraPos - Camera position for distance calculation
+     * @param {object | null} baseHeightData - Base height data from the node for distance calculation.
      * @returns {number} - Index of the vertex
      */
-    addVertex(positions, colors, theta, phi, level) {
+    addVertex(positions, colors, theta, phi, cameraPos, baseHeightData) {
         const key = this.getVertexKey(theta, phi);
         if (this.vertexMap.has(key)) return this.vertexMap.get(key);
 
-        const [vertex, terrainData] = this.mapToEllipsoid(theta, phi, level);
+        // Calculate distance using the helper function
+        const distance = this._calculateDistanceToCamera(theta, phi, cameraPos, baseHeightData);
+
+        // Get terrain data using the calculated distance
+        const [vertex, terrainData] = this.mapToEllipsoid(theta, phi, distance);
         const color = this.terrainColorManager.getColor(terrainData, theta, phi);
 
         // Track analytics data using the utility function
@@ -191,10 +225,10 @@ export class EllipsoidMesh {
         const indices = [];
 
         for (const leaf of leaves) {
-            const bottomLeftIndex = this.addVertex(positions, colors, leaf.thetaMin, leaf.phiMin, leaf.level);
-            const bottomRightIndex = this.addVertex(positions, colors, leaf.thetaMin, leaf.phiMax, leaf.level);
-            const topLeftIndex = this.addVertex(positions, colors, leaf.thetaMax, leaf.phiMin, leaf.level);
-            const topRightIndex = this.addVertex(positions, colors, leaf.thetaMax, leaf.phiMax, leaf.level);
+            const bottomLeftIndex = this.addVertex(positions, colors, leaf.thetaMin, leaf.phiMin, cameraPos, leaf.baseHeight);
+            const bottomRightIndex = this.addVertex(positions, colors, leaf.thetaMin, leaf.phiMax, cameraPos, leaf.baseHeight);
+            const topLeftIndex = this.addVertex(positions, colors, leaf.thetaMax, leaf.phiMin, cameraPos, leaf.baseHeight);
+            const topRightIndex = this.addVertex(positions, colors, leaf.thetaMax, leaf.phiMax, cameraPos, leaf.baseHeight);
 
             indices.push(bottomLeftIndex, bottomRightIndex, topRightIndex); // Triangle 1
             indices.push(bottomLeftIndex, topRightIndex, topLeftIndex);     // Triangle 2
