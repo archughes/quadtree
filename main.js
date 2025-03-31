@@ -24,15 +24,24 @@ const terrainConfig = {
     detailAmplitude: 0.05,
     octaves: 3
 };
+const a = 2000, b = 2000, c = 2000;
+const quadSplits = 6;
+const ellipsoidRadius = new THREE.Vector3(a, b, c).length(); 
+const lodDistances = linspace(50, 2 * ellipsoidRadius, quadSplits);
+console.log('quadSplits of ' + quadSplits + ' [' + lodDistances + '] of expected max resolution: ' + ellipsoidRadius / Math.pow(2, quadSplits));
 const ellipsoidMesh = new EllipsoidMesh(
-    200, 200, 200,
-    6, 2,
-    [50, 100, 200, 600, 1200],
+    a, b, c, // last is equator with 0 incident light
+    lodDistances, 
     'planetSeed123',
     terrainConfig
 );
 
-camera.far = 2 * ellipsoidMesh.lodDistances[ellipsoidMesh.lodDistances.length - 1];
+function linspace(start, end, num) {
+    const step = Math.round((end - start) / (num - 1));
+    return Array.from({ length: num }, (_, i) => start + i * step);
+}
+
+camera.far = ellipsoidMesh.lodDistances[ellipsoidMesh.lodDistances.length - 1] - 1;
 camera.position.set(camera.far / 2, 0, 0);
 camera.updateProjectionMatrix();
 
@@ -142,8 +151,9 @@ function setSurfacePosition() {
     const phi = Math.atan2(currentDirection.y, currentDirection.x);
 
     // Get surface position including terrain height
-    const [surfacePos] = ellipsoidMesh.mapToEllipsoid(theta, phi, ellipsoidMesh.maxLevel);
+    const [surfacePos] = ellipsoidMesh.mapToEllipsoid(theta, phi, ellipsoidMesh.lodDistances[0]-1);
     const surfaceRadius = surfacePos.length(); // Distance from origin to surface point
+    console.log(`Surface radius: ${surfaceRadius}`);
 
     // Calculate tangent vector (e.g., along phi direction)
     // Parametric form: x = a * sin(theta) * cos(phi), y = b * sin(theta) * sin(phi), z = c * cos(theta)
@@ -163,6 +173,7 @@ function setSurfacePosition() {
     // Update orbit controls target to the surface point
     orbitControls.target.copy(surfacePos);
     orbitControls.update();
+    updateMesh(); // Force a mesh update
 }
 
 /**
@@ -191,6 +202,9 @@ updateMesh();
 
 // Animation loop
 let lastCameraPosition = new THREE.Vector3();
+let lastUpdateTime = 0;
+const updateInterval = 33; // ~30 FPS
+const speedThreshold = 0.1; // Adjust based on your needs
 
 function animate() {
     requestAnimationFrame(animate);
@@ -199,10 +213,14 @@ function animate() {
         orbitControls.update();
 
         // Check if the camera has moved
-        if (!camera.position.equals(lastCameraPosition)) {
+        const now = performance.now();
+        const cameraSpeed = lastCameraPosition.distanceTo(camera.position);
+        if (!camera.position.equals(lastCameraPosition) && now - lastUpdateTime > updateInterval && cameraSpeed < speedThreshold) {
             updateMesh();
-            lastCameraPosition.copy(camera.position); // Store new position
+            lastCameraPosition.copy(camera.position);
+            lastUpdateTime = now;
         }
+
     }
 
     renderer.render(scene, camera);

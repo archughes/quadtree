@@ -11,20 +11,18 @@ export class EllipsoidMesh {
      * @param {number} a - X-axis radius
      * @param {number} b - Y-axis radius
      * @param {number} c - Z-axis radius
-     * @param {number} maxLevel - Maximum quadtree subdivision level
-     * @param {number} minLevel - Minimum quadtree subdivision level
      * @param {number} r1 - Inner LOD distance threshold
      * @param {number} r2 - Middle LOD distance threshold
      * @param {number} r3 - Outer LOD distance threshold
      * @param {string} [seed='default'] - Seed for randomization
      */
-    constructor(a, b, c, maxLevel, minLevel, lodDistances, seed = 'default', terrainConfig = {}) {
+    constructor(a, b, c, lodDistances, seed = 'default', terrainConfig = {}) {
         if (a <= 0 || b <= 0 || c <= 0) throw new Error('Radii must be positive');
         this.a = a;
         this.b = b;
         this.c = c;
-        this.maxLevel = maxLevel;
-        this.minLevel = minLevel;
+        this.minLevel = 0;              // Fixed
+        this.maxLevel = lodDistances.length; // Inferred
         this.lodDistances = lodDistances.sort((a, b) => a - b);
         this.root = new QuadtreeNode(0, Math.PI, 0, 2 * Math.PI, 0);
         this.vertexMap = new Map();
@@ -74,7 +72,7 @@ export class EllipsoidMesh {
     getDesiredLevel(distance) {
         for (let i = 0; i < this.lodDistances.length; i++) {
             if (distance < this.lodDistances[i]) {
-                return Math.max(this.minLevel, this.maxLevel - i);
+                return this.maxLevel - i + 1;
             }
         }
         return this.minLevel; // Farthest distance gets lowest detail
@@ -219,11 +217,14 @@ export class EllipsoidMesh {
 
         const leaves = [];
         this.collectLeafNodes(this.root, leaves);
+        console.log(`Generated ${leaves.length} leaves`);
+        console.log(`Max LOD all leaves: ${Math.max(...leaves.map(leaf => leaf.level))}`);
 
         const positions = [];
         const colors = [];
         const indices = [];
 
+        let minLeafDist = Infinity;
         for (const leaf of leaves) {
             const bottomLeftIndex = this.addVertex(positions, colors, leaf.thetaMin, leaf.phiMin, cameraPos, leaf.baseHeight);
             const bottomRightIndex = this.addVertex(positions, colors, leaf.thetaMin, leaf.phiMax, cameraPos, leaf.baseHeight);
@@ -232,7 +233,19 @@ export class EllipsoidMesh {
 
             indices.push(bottomLeftIndex, bottomRightIndex, topRightIndex); // Triangle 1
             indices.push(bottomLeftIndex, topRightIndex, topLeftIndex);     // Triangle 2
+
+            // Extract actual position vectors
+            const bottomLeftPos = new THREE.Vector3(positions[bottomLeftIndex * 3], positions[bottomLeftIndex * 3 + 1], positions[bottomLeftIndex * 3 + 2]);
+            const bottomRightPos = new THREE.Vector3(positions[bottomRightIndex * 3], positions[bottomRightIndex * 3 + 1], positions[bottomRightIndex * 3 + 2]);
+
+            // Compute the Euclidean distance
+            const thisLeafDist = bottomLeftPos.distanceTo(bottomRightPos);
+            if (thisLeafDist < minLeafDist && thisLeafDist !== 0) {
+                minLeafDist = thisLeafDist;
+            }
         }
+        console.log(`Minimum leaf node distance: ${minLeafDist}`);
+
 
         const geometry = new THREE.BufferGeometry();
         geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
@@ -240,10 +253,10 @@ export class EllipsoidMesh {
         geometry.setIndex(indices);
         geometry.computeVertexNormals();
         
-        // Log analytics data using the utility function
-        console.log("===== MESH GENERATION ANALYTICS =====");
-        logAnalytics(this.analyticsData);
-        console.log("===== END ANALYTICS =====");
+        // // Log analytics data using the utility function
+        // console.log("===== MESH GENERATION ANALYTICS =====");
+        // logAnalytics(this.analyticsData);
+        // console.log("===== END ANALYTICS =====");
         
         return geometry;
     }
