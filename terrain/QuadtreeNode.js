@@ -79,49 +79,26 @@ export class QuadtreeNode {
         return adjacent;
     }
 
-    static balanceTree(root, maxIterations = 1000) {
-        const leaves = [];
-        QuadtreeNode.findAllLeaves(root, leaves);
-        let iteration = 0;
-        let changes = true;
-
-        while (changes && iteration < maxIterations) {
-            changes = false;
-            iteration++;
-
-            // Create a copy of current leaves to avoid modifying while iterating
-            const currentLeaves = [...leaves];
-            leaves.length = 0; // Clear for re-collection
-
-            for (const leaf of currentLeaves) {
-                const neighbors = leaf.getAdjacentNodes(currentLeaves);
-                for (const neighbor of neighbors) {
-                    if (leaf.level > neighbor.level + 1) {
-                        // console.log('Avoid neighbor LOD jump:', neighbor.id);
-                        neighbor.subdivide(); // Terrain arg omitted for now; pass if needed
-                        changes = true;
-                        break; // Break to re-collect leaves
-                    }
-                    if (leaf.level === neighbor.level + 1 && !neighbor.neighborlySubdivide) {
-                        // console.log('Subdividing neighbor:', neighbor.id);
-                        neighbor.neighborlySubdivide = true;
-                        neighbor.subdivide(null, false); // Terrain arg omitted for now; pass if needed
-                        changes = true;
-                        break; // Break to re-collect leaves
-                    }
-                }
-                if (changes) break; // Restart loop with updated leaves
-            }
-
-            if (changes) {
-                QuadtreeNode.findAllLeaves(root, leaves); // Re-collect leaves after subdivision
-            } else {
-                leaves.push(...currentLeaves); // Restore if no changes
+    static balanceTree(root) {
+        const queue = [];
+        const leaves = QuadtreeNode.findAllLeaves(root);
+        for (const leaf of leaves) {
+            leaf.neighborLevels.clear();
+            const neighbors = leaf.getAdjacentNodes(leaves);
+            for (const n of neighbors) leaf.neighborLevels.set(n.id, n.level);
+            if ([...leaf.neighborLevels.values()].some(l => leaf.level > l + 1)) {
+                queue.push(leaf);
             }
         }
-
-        if (iteration >= maxIterations) {
-            console.warn("balanceTree reached max iterations; possible infinite loop prevented.");
+        while (queue.length > 0) {
+            const node = queue.shift();
+            const neighbors = node.getAdjacentNodes(QuadtreeNode.findAllLeaves(root));
+            for (const neighbor of neighbors) {
+                if (node.level > neighbor.level + 1) {
+                    neighbor.subdivide(node.terrain);
+                    queue.push(...neighbor.getAdjacentNodes(QuadtreeNode.findAllLeaves(root)));
+                }
+            }
         }
     }
 }

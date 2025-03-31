@@ -43,6 +43,19 @@ export class EllipsoidMesh {
     }
 
     /**
+     * Maps spherical coordinates to base ellipsoid surface (no terrain offset)
+     * @param {number} theta - Elevation angle
+     * @param {number} phi - Azimuth angle
+     * @returns {THREE.Vector3} - Position on base ellipsoid
+     */
+    mapToBaseEllipsoid(theta, phi) {
+        const x = this.a * Math.sin(theta) * Math.cos(phi);
+        const y = this.b * Math.sin(theta) * Math.sin(phi);
+        const z = this.c * Math.cos(theta);
+        return new THREE.Vector3(x, y, z);
+    }
+
+    /**
      * Maps spherical coordinates to ellipsoid surface with terrain offset.
      * @param {number} theta - Elevation angle
      * @param {number} phi - Azimuth angle
@@ -50,10 +63,7 @@ export class EllipsoidMesh {
      * @returns {Array} - [Position on ellipsoid with terrain, terrainData]
      */
     mapToEllipsoid(theta, phi, distance) {
-        const x = this.a * Math.sin(theta) * Math.cos(phi);
-        const y = this.b * Math.sin(theta) * Math.sin(phi);
-        const z = this.c * Math.cos(theta);
-        const base = new THREE.Vector3(x, y, z);
+        const base = this.mapToBaseEllipsoid(theta, phi);
         const terrainData = this.terrain.getHeight(theta, phi, distance); // Pass distance instead of level
         const height = terrainData.height;
         const scaled = base.clone().multiplyScalar(1 + height); // Use clone() to avoid modifying original base
@@ -72,7 +82,7 @@ export class EllipsoidMesh {
     getDesiredLevel(distance) {
         for (let i = 0; i < this.lodDistances.length; i++) {
             if (distance < this.lodDistances[i]) {
-                return this.maxLevel - i + 1;
+                return this.maxLevel - i;
             }
         }
         return this.minLevel; // Farthest distance gets lowest detail
@@ -88,11 +98,7 @@ export class EllipsoidMesh {
      * @returns {number} Distance
      */
     _calculateDistanceToCamera(theta, phi, cameraPos, baseHeightData) {
-        // Calculate base position on the ellipsoid
-        const x = this.a * Math.sin(theta) * Math.cos(phi);
-        const y = this.b * Math.sin(theta) * Math.sin(phi);
-        const z = this.c * Math.cos(theta);
-        const basePos = new THREE.Vector3(x, y, z);
+        const basePos = this.mapToBaseEllipsoid(theta, phi);
 
         // Use coarse height from node if available, otherwise default to 0
         const coarseHeight = baseHeightData?.height || 0;
@@ -117,7 +123,7 @@ export class EllipsoidMesh {
         const distance = this._calculateDistanceToCamera(thetaCenter, phiCenter, cameraPos, node.baseHeight);
         const desiredLevel = this.getDesiredLevel(distance);
 
-        if (node.level < desiredLevel && node.level < this.maxLevel) {
+        if (node.level <= desiredLevel && node.level < this.maxLevel) {
             node.subdivide(this.terrain);
             for (const child of node.children.values()) {
                 this.buildTree(child, cameraPos);
@@ -197,10 +203,11 @@ export class EllipsoidMesh {
 
     /**
      * Generates the mesh geometry based on camera position.
-     * @param {THREE.Vector3} cameraPos - Camera position
+     * @param {THREE.Camera} camera - Camera object
      * @returns {THREE.BufferGeometry} - Generated geometry
      */
-    generateGeometry(cameraPos) {
+    generateGeometry(camera) {
+        const cameraPos = camera.position;
         // Reset analytics data
         this.analyticsData = {
             colorCounts: {},

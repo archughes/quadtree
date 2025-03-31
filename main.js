@@ -25,7 +25,7 @@ const terrainConfig = {
     octaves: 3
 };
 const a = 2000, b = 2000, c = 2000;
-const quadSplits = 6;
+const quadSplits = 8;
 const ellipsoidRadius = new THREE.Vector3(a, b, c).length(); 
 const lodDistances = linspace(50, 2 * ellipsoidRadius, quadSplits);
 console.log('quadSplits of ' + quadSplits + ' [' + lodDistances + '] of expected max resolution: ' + ellipsoidRadius / Math.pow(2, quadSplits));
@@ -45,7 +45,7 @@ camera.far = ellipsoidMesh.lodDistances[ellipsoidMesh.lodDistances.length - 1] -
 camera.position.set(camera.far / 2, 0, 0);
 camera.updateProjectionMatrix();
 
-let geometry = ellipsoidMesh.generateGeometry(camera.position);
+let geometry = ellipsoidMesh.generateGeometry(camera);
 const material = new THREE.MeshPhongMaterial({ shininess: 20, side: THREE.DoubleSide, vertexColors: true });
 const mesh = new THREE.Mesh(geometry, material);
 scene.add(mesh);
@@ -92,6 +92,7 @@ if (!controlsDiv) {
             sliders.elevation.disabled = false;
             sliders.altitude.disabled = false;
             cameraController.updateFromSliders(getMinDistance(camera.position, mesh.geometry));
+            updateMesh();
         }
         
         toggleButton.textContent = isSurfaceMode ? 'Exit Surface Mode' : 'Toggle Surface Mode';
@@ -140,7 +141,7 @@ function getMinDistance(cameraPos, geom) {
  */
 function setSurfacePosition() {
     // Get current geometry to account for terrain
-    const currentGeometry = ellipsoidMesh.generateGeometry(camera.position);
+    const currentGeometry = ellipsoidMesh.generateGeometry(camera);
     const surfaceDistance = getMinDistance(camera.position, currentGeometry);
 
     // Current camera direction (normalized)
@@ -164,7 +165,7 @@ function setSurfacePosition() {
     const tangentVec = new THREE.Vector3(tangentX, tangentY, tangentZ).normalize();
 
     // Adjust surface position to account for terrain
-    camera.position.copy(surfacePos.normalize().multiplyScalar(surfaceRadius + 1.5));
+    camera.position.copy(surfacePos.normalize().multiplyScalar(surfaceRadius + 4.5));
 
     // Set camera to look along tangent direction
     const lookAtPoint = camera.position.clone().add(tangentVec.multiplyScalar(10)); // Look 10 units along tangent
@@ -180,7 +181,7 @@ function setSurfacePosition() {
  * Updates the mesh geometry based on camera position.
  */
 function updateMesh() {
-    const newGeometry = ellipsoidMesh.generateGeometry(cameraController.getPosition());
+    const newGeometry = ellipsoidMesh.generateGeometry(cameraController.camera);
     const minDistance = getMinDistance(cameraController.getPosition(), newGeometry);
     
     if (!isSurfaceMode) {
