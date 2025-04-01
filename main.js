@@ -1,20 +1,10 @@
+import * as THREE from './three.module.js';
 import { EllipsoidMesh } from './terrain/EllipsoidMesh.js';
 import { CameraController } from './CameraController.js';
-import { OrbitControls } from './OrbitControls.js';
+import { scene, camera, renderer } from './scene.js'; // Use updated scene.js
+import { setupInput } from './input.js';
 
-// Scene setup
-const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setSize(window.innerWidth, window.innerHeight);
-document.body.appendChild(renderer.domElement);
-
-// Lighting
-const ambientLight = new THREE.AmbientLight(0x404040, 1);
-scene.add(ambientLight);
-const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-directionalLight.position.set(50, 50, 50).normalize();
-scene.add(directionalLight);
+// Scene setup (already handled in scene.js)
 
 // Ellipsoid mesh
 const terrainConfig = {
@@ -24,16 +14,15 @@ const terrainConfig = {
     detailAmplitude: 0.05,
     octaves: 3
 };
-const a = 2000, b = 2000, c = 2000;
+const a = 500, b = 500, c = 500;
 const quadSplits = 8;
-const ellipsoidRadius = new THREE.Vector3(a, b, c).length(); 
+const ellipsoidRadius = new THREE.Vector3(a, b, c).length();
 const lodDistances = linspace(50, 2 * ellipsoidRadius, quadSplits);
 console.log('quadSplits of ' + quadSplits + ' [' + lodDistances + '] of expected max resolution: ' + ellipsoidRadius / Math.pow(2, quadSplits));
 const ellipsoidMesh = new EllipsoidMesh(
     a, b, c, // last is equator with 0 incident light
     lodDistances, 
-    'planetSeed123',
-    terrainConfig
+    'planetSeed123'
 );
 
 function linspace(start, end, num) {
@@ -50,7 +39,7 @@ const material = new THREE.MeshPhongMaterial({ shininess: 20, side: THREE.Double
 const mesh = new THREE.Mesh(geometry, material);
 scene.add(mesh);
 
-// Camera controller and controls
+// Camera controller and input
 const sliders = {
     azimuth: document.getElementById('azimuth'),
     elevation: document.getElementById('elevation'),
@@ -60,44 +49,13 @@ const maxAltitude = camera.far;
 sliders.altitude.max = maxAltitude;
 sliders.altitude.value = maxAltitude / 2;
 const cameraController = new CameraController(camera, sliders);
+const inputControls = setupInput(cameraController, ellipsoidMesh);
 
-// Add toggle button and orbital controls
+// Toggle button
 const controlsDiv = document.getElementById('controls');
-const orbitControls = new OrbitControls(camera, renderer.domElement);
-if (!controlsDiv) {
-    console.error('Controls div not found!');
-} else {
-    const toggleButton = document.createElement('button');
-    toggleButton.textContent = 'Toggle Surface Mode';
-    controlsDiv.appendChild(toggleButton);
-
-    
-    orbitControls.enabled = false;
-    orbitControls.enablePan = false;
-    orbitControls.minDistance = 1;
-    orbitControls.maxDistance = camera.far;
-
-    // Toggle surface mode
-    toggleButton.addEventListener('click', () => {
-        isSurfaceMode = !isSurfaceMode;
-        orbitControls.enabled = isSurfaceMode;
-        
-        if (isSurfaceMode) {
-            sliders.azimuth.disabled = true;
-            sliders.elevation.disabled = true;
-            sliders.altitude.disabled = true;
-            setSurfacePosition();
-        } else {
-            sliders.azimuth.disabled = false;
-            sliders.elevation.disabled = false;
-            sliders.altitude.disabled = false;
-            cameraController.updateFromSliders(getMinDistance(camera.position, mesh.geometry));
-            updateMesh();
-        }
-        
-        toggleButton.textContent = isSurfaceMode ? 'Exit Surface Mode' : 'Toggle Surface Mode';
-    });
-}
+const toggleButton = document.createElement('button');
+toggleButton.textContent = 'Toggle Surface Mode';
+controlsDiv.appendChild(toggleButton);
 
 // Slider readouts
 const azimuthValue = document.getElementById('azimuth-value');
@@ -107,18 +65,12 @@ const altitudeValue = document.getElementById('altitude-value');
 // Surface mode state
 let isSurfaceMode = false;
 
-/**
- * Updates slider text readouts.
- */
 function updateSliderReadouts() {
     azimuthValue.textContent = sliders.azimuth.value;
     elevationValue.textContent = sliders.elevation.value;
     altitudeValue.textContent = sliders.altitude.value;
 }
 
-/**
- * Calculates minimum distance from camera to mesh vertices.
- */
 function getMinDistance(cameraPos, geom) {
     const positions = geom.attributes.position.array;
     if (!positions.length) return 2;
@@ -136,54 +88,39 @@ function getMinDistance(cameraPos, geom) {
     return setDist + 0.5;
 }
 
-/**
- * Positions camera 1.5 units above surface and orients it tangent to the surface
- */
 function setSurfacePosition() {
-    // Get current geometry to account for terrain
-    const currentGeometry = ellipsoidMesh.generateGeometry(camera);
+    const currentGeometry = ellipsoidMesh.updateGeometry(camera);
     const surfaceDistance = getMinDistance(camera.position, currentGeometry);
 
-    // Current camera direction (normalized)
     const currentDirection = camera.position.clone().normalize();
-
-    // Surface point in spherical coordinates (theta, phi) based on current direction
     const theta = Math.acos(currentDirection.z / Math.sqrt(currentDirection.x ** 2 + currentDirection.y ** 2 + currentDirection.z ** 2));
     const phi = Math.atan2(currentDirection.y, currentDirection.x);
+    const surfaceHeight = ellipsoidMesh.getSurfaceHeightAt(theta, phi);
+    console.log('Surface height:', surfaceHeight);
 
-    // Get surface position including terrain height
-    const [surfacePos] = ellipsoidMesh.mapToEllipsoid(theta, phi, ellipsoidMesh.lodDistances[0]-1);
-    const surfaceRadius = surfacePos.length(); // Distance from origin to surface point
-    console.log(`Surface radius: ${surfaceRadius}`);
+    // Set camera position
+    camera.position.copy(currentDirection.multiplyScalar(surfaceHeight + 1.5)); // Match minHeightAboveSurface
 
-    // Calculate tangent vector (e.g., along phi direction)
-    // Parametric form: x = a * sin(theta) * cos(phi), y = b * sin(theta) * sin(phi), z = c * cos(theta)
-    // Partial derivative w.r.t. phi gives tangent along azimuthal direction
-    const tangentX = -ellipsoidMesh.a * Math.sin(theta) * Math.sin(phi);
-    const tangentY = ellipsoidMesh.b * Math.sin(theta) * Math.cos(phi);
-    const tangentZ = 0; // z doesn't change with phi
-    const tangentVec = new THREE.Vector3(tangentX, tangentY, tangentZ).normalize();
+    // Set camera up direction to surface normal
+    const normal = camera.position.clone().normalize();
+    camera.up.copy(normal);
 
-    // Adjust surface position to account for terrain
-    camera.position.copy(surfacePos.normalize().multiplyScalar(surfaceRadius + 4.5));
-
-    // Set camera to look along tangent direction
-    const lookAtPoint = camera.position.clone().add(tangentVec.multiplyScalar(10)); // Look 10 units along tangent
+    // Set initial forward direction (tangent to surface)
+    const tangentVec = new THREE.Vector3(
+        -ellipsoidMesh.a * Math.sin(theta) * Math.sin(phi),
+        ellipsoidMesh.b * Math.sin(theta) * Math.cos(phi),
+        0
+    ).normalize();
+    const lookAtPoint = camera.position.clone().add(tangentVec.multiplyScalar(10));
     camera.lookAt(lookAtPoint);
 
-    // Update orbit controls target to the surface point
-    orbitControls.target.copy(surfacePos);
-    orbitControls.update();
-    updateMesh(); // Force a mesh update
+    updateMesh();
 }
 
-/**
- * Updates the mesh geometry based on camera position.
- */
 function updateMesh() {
-    const newGeometry = ellipsoidMesh.generateGeometry(cameraController.camera);
+    const newGeometry = ellipsoidMesh.updateGeometry(camera);
     const minDistance = getMinDistance(cameraController.getPosition(), newGeometry);
-    
+
     if (!isSurfaceMode) {
         cameraController.updateFromSliders(minDistance);
     }
@@ -193,27 +130,41 @@ function updateMesh() {
     updateSliderReadouts();
 }
 
-// Event listeners
+toggleButton.addEventListener('click', () => {
+    isSurfaceMode = !isSurfaceMode;
+    if (isSurfaceMode) {
+        sliders.azimuth.disabled = true;
+        sliders.elevation.disabled = true;
+        sliders.altitude.disabled = true;
+        setSurfacePosition();
+    } else {
+        sliders.azimuth.disabled = false;
+        sliders.elevation.disabled = false;
+        sliders.altitude.disabled = false;
+        cameraController.updateFromSliders(getMinDistance(camera.position, mesh.geometry));
+        updateMesh();
+    }
+    toggleButton.textContent = isSurfaceMode ? 'Exit Surface Mode' : 'Toggle Surface Mode';
+});
+
 sliders.azimuth.addEventListener('input', updateMesh);
 sliders.elevation.addEventListener('input', updateMesh);
 sliders.altitude.addEventListener('input', updateMesh);
 
-// Initial setup
-updateMesh();
-
 // Animation loop
+let lastTime = 0;
 let lastCameraPosition = new THREE.Vector3();
 let lastUpdateTime = 0;
-const updateInterval = 33; // ~30 FPS
+const updateInterval = 1000; // ~1 FPS
 const speedThreshold = 0.1; // Adjust based on your needs
-
-function animate() {
+function animate(time) {
     requestAnimationFrame(animate);
+    const delta = (time - lastTime) / 1000;
+    lastTime = time;
 
     if (isSurfaceMode) {
-        orbitControls.update();
+        inputControls.updateCamera(delta, isSurfaceMode);
 
-        // Check if the camera has moved
         const now = performance.now();
         const cameraSpeed = lastCameraPosition.distanceTo(camera.position);
         if (!camera.position.equals(lastCameraPosition) && now - lastUpdateTime > updateInterval && cameraSpeed < speedThreshold) {
@@ -221,9 +172,8 @@ function animate() {
             lastCameraPosition.copy(camera.position);
             lastUpdateTime = now;
         }
-
     }
 
     renderer.render(scene, camera);
 }
-animate();
+animate(0);

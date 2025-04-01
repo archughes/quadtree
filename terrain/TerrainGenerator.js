@@ -36,7 +36,7 @@ export class TerrainGenerator {
             baseAmplitude: config.baseAmplitude || 0.1,
             detailFrequency: config.detailFrequency || 2,
             detailAmplitude: config.detailAmplitude || 0.05,
-            octaves: config.octaves || 1,
+            octaves: config.octaves || 3,
             waterLevel: config.waterLevel || 0,
             waterBlend: config.waterBlend || 0.5,
             rotationAxis: config.rotationAxis || [0, 0, 1],

@@ -1,3 +1,4 @@
+import * as THREE from '../three.module.js';
 import { QuadtreeNode } from './QuadtreeNode.js';
 import { TerrainGenerator } from './TerrainGenerator.js';
 import { TerrainColorManager } from './TerrainColorManager.js';
@@ -26,11 +27,14 @@ export class EllipsoidMesh {
         this.lodDistances = lodDistances.sort((a, b) => a - b);
         this.root = new QuadtreeNode(0, Math.PI, 0, 2 * Math.PI, 0);
         this.vertexMap = new Map();
+        this.positions = [];
+        this.colors = [];
+        this.indices = [];
         this.rng = createSeededRNG(seed);
         this.noise = createNoise2D(() => this.rng.random());
         this.terrain = new TerrainGenerator(this.noise, seed, terrainConfig); // Delegate terrain generation
         this.terrainColorManager = new TerrainColorManager();
-        this.terrainColorManager.setConfig(terrainConfig, this.noise);
+        this.terrainColorManager.setConfig(this.terrain.config, this.noise);
         
         // Store analytics data during generation
         this.analyticsData = {
@@ -202,6 +206,92 @@ export class EllipsoidMesh {
     }
 
     /**
+     * Finds the leaf node containing the given theta, phi.
+     * @param {number} theta - Elevation angle
+     * @param {number} phi - Azimuth angle
+     * @returns {QuadtreeNode|null} - The leaf node, or null if not found
+     */
+    findLeafNode(theta, phi) {
+        function search(node, t, p) {
+            if (node.isLeaf()) {
+                if (t >= node.thetaMin && t <= node.thetaMax && p >= node.phiMin && p <= node.phiMax) {
+                    return node;
+                }
+                return null;
+            }
+            for (const child of node.children.values()) {
+                if (t >= child.thetaMin && t <= child.thetaMax && p >= child.phiMin && p <= child.phiMax) {
+                    return search(child, t, p);
+                }
+            }
+            return null;
+        }
+        return search(this.root, theta, phi);
+    }
+
+    /**
+     * Retrieves the rendered surface height at the given theta, phi by interpolating between the quadtree node's vertices.
+     * @param {number} theta - Elevation angle
+     * @param {number} phi - Azimuth angle
+     * @returns {number} - The interpolated surface height at this position
+     */
+    getSurfaceHeightAt(theta, phi) {
+        // Normalize phi to [0, 2π)
+        while (phi < 0) phi += 2 * Math.PI;
+        while (phi >= 2 * Math.PI) phi -= 2 * Math.PI;
+
+        // Find the leaf node containing this theta, phi
+        const leaf = this.findLeafNode(theta, phi);
+        if (!leaf) {
+            console.warn(`No leaf node found at theta=${theta}, phi=${phi}, computing height as fallback`);
+            const [surfacePos] = this.mapToEllipsoid(theta, phi, this.lodDistances[0]);
+            return surfacePos.length();
+        }
+
+        // Get the indices of the four corner vertices of the leaf node
+        const bottomLeftKey = this.getVertexKey(leaf.thetaMin, leaf.phiMin);
+        const bottomRightKey = this.getVertexKey(leaf.thetaMin, leaf.phiMax);
+        const topLeftKey = this.getVertexKey(leaf.thetaMax, leaf.phiMin);
+        const topRightKey = this.getVertexKey(leaf.thetaMax, leaf.phiMax);
+
+        // Retrieve the heights (lengths) of the four corners
+        const getHeightFromKey = (key) => {
+            if (this.vertexMap.has(key)) {
+                const index = this.vertexMap.get(key);
+                const x = this.positions[index * 3];
+                const y = this.positions[index * 3 + 1];
+                const z = this.positions[index * 3 + 2];
+                const vertexPos = new THREE.Vector3(x, y, z);
+                return vertexPos.length();
+            }
+            console.warn(`Vertex not found for key=${key}, computing height as fallback`);
+            const [thetaPart, phiPart] = key.split(':')[1].split(',').map(Number);
+            const [surfacePos] = this.mapToEllipsoid(thetaPart, phiPart, this.lodDistances[0]);
+            return surfacePos.length();
+        };
+
+        const hBottomLeft = getHeightFromKey(bottomLeftKey);
+        const hBottomRight = getHeightFromKey(bottomRightKey);
+        const hTopLeft = getHeightFromKey(topLeftKey);
+        const hTopRight = getHeightFromKey(topRightKey);
+
+        // Perform bilinear interpolation
+        const thetaRange = leaf.thetaMax - leaf.thetaMin;
+        const phiRange = leaf.phiMax - leaf.phiMin;
+        const t = (theta - leaf.thetaMin) / thetaRange; // Normalized theta position [0, 1]
+        const p = (phi - leaf.phiMin) / phiRange;       // Normalized phi position [0, 1]
+
+        // Interpolate along theta (vertical) at phiMin and phiMax
+        const hLeft = hBottomLeft + t * (hTopLeft - hBottomLeft);
+        const hRight = hBottomRight + t * (hTopRight - hBottomRight);
+
+        // Interpolate along phi (horizontal) between the two interpolated heights
+        const interpolatedHeight = hLeft + p * (hRight - hLeft);
+
+        return interpolatedHeight;
+    }
+
+    /**
      * Generates the mesh geometry based on camera position.
      * @param {THREE.Camera} camera - Camera object
      * @returns {THREE.BufferGeometry} - Generated geometry
@@ -227,23 +317,23 @@ export class EllipsoidMesh {
         console.log(`Generated ${leaves.length} leaves`);
         console.log(`Max LOD all leaves: ${Math.max(...leaves.map(leaf => leaf.level))}`);
 
-        const positions = [];
-        const colors = [];
-        const indices = [];
+        this.positions = [];
+        this.colors = [];
+        this.indices = [];
 
         let minLeafDist = Infinity;
         for (const leaf of leaves) {
-            const bottomLeftIndex = this.addVertex(positions, colors, leaf.thetaMin, leaf.phiMin, cameraPos, leaf.baseHeight);
-            const bottomRightIndex = this.addVertex(positions, colors, leaf.thetaMin, leaf.phiMax, cameraPos, leaf.baseHeight);
-            const topLeftIndex = this.addVertex(positions, colors, leaf.thetaMax, leaf.phiMin, cameraPos, leaf.baseHeight);
-            const topRightIndex = this.addVertex(positions, colors, leaf.thetaMax, leaf.phiMax, cameraPos, leaf.baseHeight);
+            const bottomLeftIndex = this.addVertex(this.positions, this.colors, leaf.thetaMin, leaf.phiMin, cameraPos, leaf.baseHeight);
+            const bottomRightIndex = this.addVertex(this.positions, this.colors, leaf.thetaMin, leaf.phiMax, cameraPos, leaf.baseHeight);
+            const topLeftIndex = this.addVertex(this.positions, this.colors, leaf.thetaMax, leaf.phiMin, cameraPos, leaf.baseHeight);
+            const topRightIndex = this.addVertex(this.positions, this.colors, leaf.thetaMax, leaf.phiMax, cameraPos, leaf.baseHeight);
 
-            indices.push(bottomLeftIndex, bottomRightIndex, topRightIndex); // Triangle 1
-            indices.push(bottomLeftIndex, topRightIndex, topLeftIndex);     // Triangle 2
+            this.indices.push(bottomLeftIndex, bottomRightIndex, topRightIndex); // Triangle 1
+            this.indices.push(bottomLeftIndex, topRightIndex, topLeftIndex);     // Triangle 2
 
             // Extract actual position vectors
-            const bottomLeftPos = new THREE.Vector3(positions[bottomLeftIndex * 3], positions[bottomLeftIndex * 3 + 1], positions[bottomLeftIndex * 3 + 2]);
-            const bottomRightPos = new THREE.Vector3(positions[bottomRightIndex * 3], positions[bottomRightIndex * 3 + 1], positions[bottomRightIndex * 3 + 2]);
+            const bottomLeftPos = new THREE.Vector3(this.positions[bottomLeftIndex * 3], this.positions[bottomLeftIndex * 3 + 1], this.positions[bottomLeftIndex * 3 + 2]);
+            const bottomRightPos = new THREE.Vector3(this.positions[bottomRightIndex * 3], this.positions[bottomRightIndex * 3 + 1], this.positions[bottomRightIndex * 3 + 2]);
 
             // Compute the Euclidean distance
             const thisLeafDist = bottomLeftPos.distanceTo(bottomRightPos);
@@ -255,9 +345,9 @@ export class EllipsoidMesh {
 
 
         const geometry = new THREE.BufferGeometry();
-        geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-        geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-        geometry.setIndex(indices);
+        geometry.setAttribute('position', new THREE.Float32BufferAttribute(this.positions, 3));
+        geometry.setAttribute('color', new THREE.Float32BufferAttribute(this.colors, 3));
+        geometry.setIndex(this.indices);
         geometry.computeVertexNormals();
         
         // // Log analytics data using the utility function
