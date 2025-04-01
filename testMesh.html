@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Ellipsoid Mesh LOD Test</title>
+    <style>
+        body { margin: 0; overflow: hidden; }
+        canvas { display: block; }
+        #controls { position: absolute; top: 10px; left: 10px; background: rgba(255, 255, 255, 0.8); padding: 10px; }
+    </style>
+</head>
+<body>
+    <div id="controls">
+        <label for="lod-slider">LOD Level: </label>
+        <input type="range" id="lod-slider" min="0" max="2" value="1" step="1">
+        <span id="lod-value">1</span>
+    </div>
+    <script type="module" src="testMesh.js"></script>
+</body>
+</html>

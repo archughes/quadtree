@@ -1,4 +1,15 @@
+/**
+ * Represents a node in a quadtree structure for spatial subdivision on an ellipsoid surface.
+ */
 export class QuadtreeNode {
+    /**
+     * Constructs a quadtree node with specified angular bounds and level.
+     * @param {number} thetaMin - Minimum elevation angle (radians)
+     * @param {number} thetaMax - Maximum elevation angle (radians)
+     * @param {number} phiMin - Minimum azimuth angle (radians)
+     * @param {number} phiMax - Maximum azimuth angle (radians)
+     * @param {number} level - Depth level in the quadtree (0 is root)
+     */
     constructor(thetaMin, thetaMax, phiMin, phiMax, level) {
         this.thetaMin = thetaMin;
         this.thetaMax = thetaMax;
@@ -10,12 +21,23 @@ export class QuadtreeNode {
         this.id = Math.random().toString(36).substr(2, 9);
         this.baseHeight = null;
         this.neighborlySubdivide = false;
+        this.vertices = new Map(); // Map of vertex keys to indices for this node
     }
 
+    /**
+     * Checks if this node is a leaf (has no children).
+     * @returns {boolean} - True if the node is a leaf, false otherwise
+     */
     isLeaf() {
         return this.children.size === 0;
     }
 
+    /**
+     * Determines the child quadrant key for a given theta, phi position.
+     * @param {number} theta - Elevation angle (radians)
+     * @param {number} phi - Azimuth angle (radians)
+     * @returns {string} - Quadrant key ('nw', 'ne', 'sw', 'se')
+     */
     getChildKey(theta, phi) {
         const thetaMid = (this.thetaMin + this.thetaMax) / 2;
         const phiMid = (this.phiMin + this.phiMax) / 2;
@@ -24,7 +46,12 @@ export class QuadtreeNode {
         return `${isNorth ? 'n' : 's'}${isWest ? 'w' : 'e'}`;
     }
 
-    subdivide(terrain, changeLevel=true) {
+    /**
+     * Subdivides this node into four child nodes if it is a leaf.
+     * @param {TerrainGenerator} terrain - Terrain generator for height calculation
+     * @param {boolean} [changeLevel=true] - Whether to increment the level for children
+     */
+    subdivide(terrain, changeLevel = true) {
         if (!this.isLeaf()) return;
         const thetaMid = (this.thetaMin + this.thetaMax) / 2;
         const phiMid = (this.phiMin + this.phiMax) / 2;
@@ -46,6 +73,11 @@ export class QuadtreeNode {
         }
     }
 
+    /**
+     * Checks if this node is adjacent to another node.
+     * @param {QuadtreeNode} other - The other node to check adjacency with
+     * @returns {boolean} - True if nodes are adjacent, false otherwise
+     */
     isAdjacent(other) {
         const shareTheta =
             (Math.abs(this.thetaMin - other.thetaMax) < 1e-6 ||
@@ -58,6 +90,12 @@ export class QuadtreeNode {
         return shareTheta || sharePhi;
     }
 
+    /**
+     * Recursively finds all leaf nodes starting from the given node.
+     * @param {QuadtreeNode} node - Starting node for the search
+     * @param {QuadtreeNode[]} [leaves=[]] - Array to store found leaves
+     * @returns {QuadtreeNode[]} - Array of all leaf nodes
+     */
     static findAllLeaves(node, leaves = []) {
         if (node.isLeaf()) {
             leaves.push(node);
@@ -69,6 +107,11 @@ export class QuadtreeNode {
         return leaves;
     }
 
+    /**
+     * Finds all adjacent leaf nodes from a given list of leaves.
+     * @param {QuadtreeNode[]} leaves - List of leaf nodes to check against
+     * @returns {QuadtreeNode[]} - Array of adjacent leaf nodes
+     */
     getAdjacentNodes(leaves) {
         const adjacent = [];
         for (const leaf of leaves) {
@@ -79,6 +122,10 @@ export class QuadtreeNode {
         return adjacent;
     }
 
+    /**
+     * Balances the quadtree to ensure no node’s level exceeds its neighbors’ by more than 1.
+     * @param {QuadtreeNode} root - Root node of the quadtree
+     */
     static balanceTree(root) {
         const queue = [];
         const leaves = QuadtreeNode.findAllLeaves(root);
@@ -100,5 +147,16 @@ export class QuadtreeNode {
                 }
             }
         }
+    }
+
+    /**
+     * Calculates the center point of this node in spherical coordinates.
+     * @returns {Object} - Object with theta and phi properties representing the center
+     */
+    getCenter() {
+        return {
+            theta: (this.thetaMin + this.thetaMax) / 2,
+            phi: (this.phiMin + this.phiMax) / 2
+        };
     }
 }
