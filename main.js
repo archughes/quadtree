@@ -71,26 +71,9 @@ function updateSliderReadouts() {
     altitudeValue.textContent = sliders.altitude.value;
 }
 
-function getMinDistance(cameraPos, geom) {
-    const positions = geom.attributes.position.array;
-    if (!positions.length) return 2;
-    let minDist = Infinity;
-    let setDist = Infinity;
-    const tempVec = new THREE.Vector3();
-    for (let i = 0; i < positions.length; i += 3) {
-        tempVec.set(positions[i], positions[i + 1], positions[i + 2]);
-        const dist = cameraPos.distanceTo(tempVec);
-        if (dist < minDist) {
-            minDist = dist;
-            setDist = tempVec.distanceTo(new THREE.Vector3(0, 0, 0));
-        }
-    }
-    return setDist + 0.5;
-}
-
 function setSurfacePosition() {
-    const currentGeometry = ellipsoidMesh.updateGeometry(camera);
-    const surfaceDistance = getMinDistance(camera.position, currentGeometry);
+    const currentGeometry = ellipsoidMesh.generateGeometry(camera);
+    const surfaceDistance = ellipsoidMesh.getMinDistance(camera.position);
 
     const currentDirection = camera.position.clone().normalize();
     const theta = Math.acos(currentDirection.z / Math.sqrt(currentDirection.x ** 2 + currentDirection.y ** 2 + currentDirection.z ** 2));
@@ -118,8 +101,8 @@ function setSurfacePosition() {
 }
 
 function updateMesh() {
-    const newGeometry = ellipsoidMesh.updateGeometry(camera);
-    const minDistance = getMinDistance(cameraController.getPosition(), newGeometry);
+    const newGeometry = ellipsoidMesh.generateGeometry(camera);
+    const minDistance = ellipsoidMesh.getMinDistance(cameraController.getPosition());
 
     if (!isSurfaceMode) {
         cameraController.updateFromSliders(minDistance);
@@ -141,7 +124,7 @@ toggleButton.addEventListener('click', () => {
         sliders.azimuth.disabled = false;
         sliders.elevation.disabled = false;
         sliders.altitude.disabled = false;
-        cameraController.updateFromSliders(getMinDistance(camera.position, mesh.geometry));
+        cameraController.updateFromSliders(ellipsoidMesh.getMinDistance(camera.position));
         updateMesh();
     }
     toggleButton.textContent = isSurfaceMode ? 'Exit Surface Mode' : 'Toggle Surface Mode';
@@ -153,10 +136,13 @@ sliders.altitude.addEventListener('input', updateMesh);
 
 // Animation loop
 let lastTime = 0;
-let lastCameraPosition = new THREE.Vector3();
+let lastCameraPosition = camera.position.clone();
+let lastCameraQuaternion = camera.quaternion.clone();
 let lastUpdateTime = 0;
-const updateInterval = 1000; // ~1 FPS
-const speedThreshold = 0.1; // Adjust based on your needs
+const updateInterval = 1000; // ~1 FPS (1000ms)
+const rotationThreshold = 20; // Degrees
+const distanceThreshold = 10; // Units
+
 function animate(time) {
     requestAnimationFrame(animate);
     const delta = (time - lastTime) / 1000;
@@ -166,11 +152,49 @@ function animate(time) {
         inputControls.updateCamera(delta, isSurfaceMode);
 
         const now = performance.now();
-        const cameraSpeed = lastCameraPosition.distanceTo(camera.position);
-        if (!camera.position.equals(lastCameraPosition) && now - lastUpdateTime > updateInterval && cameraSpeed < speedThreshold) {
+
+        // Calculate rotation difference in degrees
+        const qCurrent = camera.quaternion.clone();
+        const qDiff = qCurrent.clone().multiply(lastCameraQuaternion.conjugate());
+        let angleDiff;
+        const epsilon = 0.0001;
+        if (Math.abs(1 - Math.abs(qDiff.w)) < epsilon) {
+            angleDiff = 0;
+        } else {
+            angleDiff = 2 * Math.acos(Math.abs(qDiff.w)) * (180 / Math.PI);
+        }
+
+        // Calculate distance moved since last update
+        const distanceMoved = lastCameraPosition.distanceTo(camera.position);
+
+        // // Log conditions for debugging
+        // console.log({
+        //     timeSinceLastUpdate: now - lastUpdateTime,
+        //     distanceMoved,
+        //     angleDiff,
+        //     updateInterval,
+        //     distanceThreshold,
+        //     rotationThreshold
+        // });
+
+        // Check conditions for update
+        const timeCondition = now - lastUpdateTime > updateInterval;
+        const moveCondition = distanceMoved > distanceThreshold;
+        const rotateCondition = angleDiff > rotationThreshold;
+
+        if (
+            (timeCondition) &&
+            (moveCondition)// || rotateCondition)
+        ) {
+            console.log("Updating mesh...");
             updateMesh();
             lastCameraPosition.copy(camera.position);
+            lastCameraQuaternion.copy(camera.quaternion);
             lastUpdateTime = now;
+        } else {
+            // Log why update didn't happen
+            if (!timeCondition) console.log("Blocked by time condition");
+            if (!moveCondition && !rotateCondition) console.log("Blocked by movement/rotation thresholds");
         }
     }
 

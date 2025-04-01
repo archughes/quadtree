@@ -119,18 +119,38 @@ export class EllipsoidMesh {
      * @param {QuadtreeNode} node - Current node to process
      * @param {THREE.Vector3} cameraPos - Camera position
      */
-    buildTree(node, cameraPos) {
+    buildTree(node, camera) {
         const thetaCenter = (node.thetaMin + node.thetaMax) / 2;
         const phiCenter = (node.phiMin + node.phiMax) / 2;
+    
+        // Convert node's spherical center to Cartesian coordinates
+        const nodePos = this.mapToBaseEllipsoid(thetaCenter, phiCenter);
+        const cameraToNode = nodePos.clone().sub(camera.position).normalize();
+        const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion).normalize();
+        const angle = Math.acos(forward.dot(cameraToNode)) * (180 / Math.PI); // Convert to degrees
+        // console.log('Angle:', angle);
+        // if (angle > 100 && node.level > 1) {
+        //     return; // Node is outside the 120-degree frustum
+        // }
 
-        // Use helper to calculate distance
-        const distance = this._calculateDistanceToCamera(thetaCenter, phiCenter, cameraPos, node.baseHeight);
+        // Calculate distances
+        const cameraToNodeDist = camera.position.distanceTo(nodePos);
+        const cameraToOriginDist = camera.position.distanceTo(new THREE.Vector3(0, 0, 0));
+    
+        // Simple backside culling: skip this node if it's on the far side
+        // console.log('Camera to node distance:', cameraToNodeDist, 'Camera to origin distance:', cameraToOriginDist);
+        if (cameraToNodeDist > cameraToOriginDist && node.level > 1) {
+            return; // Do not subdivide or process this node
+        }
+    
+        // If node is not culled, proceed with LOD calculation
+        const distance = this._calculateDistanceToCamera(thetaCenter, phiCenter, camera.position, node.baseHeight);
         const desiredLevel = this.getDesiredLevel(distance);
-
+    
         if (node.level <= desiredLevel && node.level < this.maxLevel) {
             node.subdivide(this.terrain);
             for (const child of node.children.values()) {
-                this.buildTree(child, cameraPos);
+                this.buildTree(child, camera);
             }
         }
     }
@@ -291,6 +311,23 @@ export class EllipsoidMesh {
         return interpolatedHeight;
     }
 
+    getMinDistance(cameraPos) {
+        const positions = this.positions;
+        if (!positions.length) return 2;
+        let minDist = Infinity;
+        let setDist = Infinity;
+        const tempVec = new THREE.Vector3();
+        for (let i = 0; i < positions.length; i += 3) {
+            tempVec.set(positions[i], positions[i + 1], positions[i + 2]);
+            const dist = cameraPos.distanceTo(tempVec);
+            if (dist < minDist) {
+                minDist = dist;
+                setDist = tempVec.distanceTo(new THREE.Vector3(0, 0, 0));
+            }
+        }
+        return setDist + 0.5;
+    }
+
     /**
      * Generates the mesh geometry based on camera position.
      * @param {THREE.Camera} camera - Camera object
@@ -309,7 +346,7 @@ export class EllipsoidMesh {
         
         this.root.children.clear(); // Changed from = []
         this.vertexMap.clear();
-        this.buildTree(this.root, cameraPos);
+        this.buildTree(this.root, camera);
         QuadtreeNode.balanceTree(this.root);
 
         const leaves = [];
