@@ -111,7 +111,16 @@ export class EllipsoidMesh {
      */
     addVertex(positions, colors, theta, phi, cameraPos, baseHeightData) {
         const key = this.getVertexKey(theta, phi);
-        if (this.vertexMap.has(key)) return this.vertexMap.get(key);
+        if (this.vertexMap.has(key)) {
+            const index = this.vertexMap.get(key);
+            const distance = this.treeManager._calculateDistanceToCamera(theta, phi, cameraPos, baseHeightData);
+            const [newVertex] = this.mapToEllipsoid(theta, phi, distance);
+            const oldX = positions[index * 3], oldY = positions[index * 3 + 1], oldZ = positions[index * 3 + 2];
+            if (Math.abs(newVertex.x - oldX) > 1e-6 || Math.abs(newVertex.y - oldY) > 1e-6 || Math.abs(newVertex.z - oldZ) > 1e-6) {
+                console.warn(`Vertex position changed for key=${key}: old=(${oldX},${oldY},${oldZ}), new=(${newVertex.x},${newVertex.y},${newVertex.z})`);
+            }
+            return index;
+        }
 
         const distance = this.treeManager._calculateDistanceToCamera(theta, phi, cameraPos, baseHeightData);
         const [vertex, terrainData] = this.mapToEllipsoid(theta, phi, distance);
@@ -124,23 +133,6 @@ export class EllipsoidMesh {
         colors.push(color[0] / 255, color[1] / 255, color[2] / 255);
         this.vertexMap.set(key, index);
         return index;
-    }
-
-    /**
-     * Removes a vertex from the mesh (stub for incremental updates).
-     * @param {number} theta - Elevation angle
-     * @param {number} phi - Azimuth angle
-     * @returns {number} - Index of the removed vertex, or -1 if not found
-     */
-    removeVertex(theta, phi) {
-        const key = this.getVertexKey(theta, phi);
-        if (this.vertexMap.has(key)) {
-            const index = this.vertexMap.get(key);
-            // TODO: Remove from positions, colors, and indices efficiently
-            this.vertexMap.delete(key);
-            return index;
-        }
-        return -1;
     }
 
     /**
@@ -300,13 +292,90 @@ export class EllipsoidMesh {
     }
 
     /**
-     * Updates the geometry incrementally based on changed nodes (stub).
+     * Updates the geometry incrementally based on camera movement with culling.
      * @param {THREE.Camera} camera - Camera object
-     * @param {QuadtreeNode[]} changedNodes - Nodes that need updating
      * @returns {THREE.BufferGeometry} - Updated geometry
      */
-    updateGeometry(camera, changedNodes = []) {
-        // TODO: Update only the affected nodes instead of full regeneration
-        return this.generateGeometry(camera); // Placeholder
+    updateGeometry(camera) {
+        console.time('EllipsoidMesh.updateGeometry');
+        const startTime = performance.now();
+
+        this.treeManager.updateTree(camera);
+        const leaves = this.treeManager.collectLeafNodes();
+        console.log(`Processing ${leaves.length} leaves for geometry update`);
+
+        const geometry = this.geometry || new THREE.BufferGeometry();
+        if (!this.geometry) {
+            console.warn('Geometry not initialized, falling back to generateGeometry');
+            this.geometry = this.generateGeometry(camera);
+            return this.geometry;
+        }
+
+        // Reset arrays to ensure consistency
+        this.positions = [];
+        this.colors = [];
+        this.indices = [];
+        this.vertexMap.clear();
+
+        const processedLeaves = new Set();
+        let culledLeaves = 0;
+
+        // Camera vectors for culling
+        const cameraForward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion).normalize();
+        const cameraToOriginDist = camera.position.length();
+
+        for (const leaf of leaves) {
+            if (processedLeaves.has(leaf.id)) continue;
+            processedLeaves.add(leaf.id);
+
+            // Calculate leaf center in spherical and Cartesian coordinates
+            const thetaCenter = (leaf.thetaMin + leaf.thetaMax) / 2;
+            const phiCenter = (leaf.phiMin + leaf.phiMax) / 2;
+            const leafPos = this.mapToBaseEllipsoid(thetaCenter, phiCenter);
+
+            // Frustum culling: skip if outside 100° FOV
+            const cameraToLeaf = leafPos.clone().sub(camera.position).normalize();
+            const angle = Math.acos(cameraForward.dot(cameraToLeaf)) * (180 / Math.PI);
+            if (angle > 100) { // Adjust FOV threshold as needed (e.g., match camera.fov * 1.2)
+                culledLeaves++;
+                continue;
+            }
+
+            // Backside culling: skip if leaf is on far side
+            const cameraToLeafDist = camera.position.distanceTo(leafPos);
+            if (cameraToLeafDist > cameraToOriginDist && leaf.level > 1) {
+                culledLeaves++;
+                continue;
+            }
+
+            // Leaf is visible, add its geometry
+            const indices = [
+                this.addVertex(this.positions, this.colors, leaf.thetaMin, leaf.phiMin, camera.position, leaf.baseHeight),
+                this.addVertex(this.positions, this.colors, leaf.thetaMin, leaf.phiMax, camera.position, leaf.baseHeight),
+                this.addVertex(this.positions, this.colors, leaf.thetaMax, leaf.phiMin, camera.position, leaf.baseHeight),
+                this.addVertex(this.positions, this.colors, leaf.thetaMax, leaf.phiMax, camera.position, leaf.baseHeight)
+            ];
+
+            this.indices.push(indices[0], indices[1], indices[3]); // Bottom-left, bottom-right, top-right
+            this.indices.push(indices[0], indices[3], indices[2]); // Bottom-left, top-right, top-left
+
+            leaf.vertexIndices.clear();
+            indices.forEach(index => leaf.vertexIndices.add(index));
+        }
+
+        geometry.setAttribute('position', new THREE.Float32BufferAttribute(this.positions, 3));
+        geometry.setAttribute('color', new THREE.Float32BufferAttribute(this.colors, 3));
+        geometry.setIndex(this.indices);
+        geometry.computeVertexNormals();
+
+        const endTime = performance.now();
+        console.log(`Updated geometry with ${this.positions.length / 3} vertices and ${this.indices.length / 3} triangles`);
+        console.log(`Max LOD all leaves: ${Math.max(...leaves.map(leaf => leaf.level))}`);
+        console.log(`Culled ${culledLeaves} of ${leaves.length} leaves (${((culledLeaves / leaves.length) * 100).toFixed(1)}%)`);
+        console.timeEnd('EllipsoidMesh.updateGeometry');
+        console.log(`Update took ${(endTime - startTime).toFixed(2)} ms`);
+
+        this.geometry = geometry;
+        return geometry;
     }
 }

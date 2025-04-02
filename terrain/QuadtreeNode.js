@@ -21,7 +21,19 @@ export class QuadtreeNode {
         this.id = Math.random().toString(36).substr(2, 9);
         this.baseHeight = null;
         this.neighborlySubdivide = false;
-        this.vertices = new Map(); // Map of vertex keys to indices for this node
+        this.vertexIndices = new Set(); // Tracks vertex indices owned by this node
+        this.cachedVertices = new Map(); // Maps vertex keys to { position: [x, y, z], color: [r, g, b], height: h }
+    }
+
+    // Optional helper to clear cache when node splits or merges
+    clearCache() {
+        this.vertexIndices.clear();
+        this.cachedVertices.clear();
+    }
+
+    // Optional: Add vertex to tracking
+    addVertexIndex(index) {
+        this.vertexIndices.add(index);
     }
 
     /**
@@ -71,6 +83,9 @@ export class QuadtreeNode {
             child.baseHeight = this.baseHeight;
             child.neighborlySubdivide = this.neighborlySubdivide;
         }
+
+        // Clear vertex tracking since this node is no longer a leaf
+        this.vertexIndices.clear();
     }
 
     /**
@@ -121,7 +136,7 @@ export class QuadtreeNode {
         }
         return adjacent;
     }
-
+    
     /**
      * Balances the quadtree to ensure no node’s level exceeds its neighbors’ by more than 1.
      * @param {QuadtreeNode} root - Root node of the quadtree

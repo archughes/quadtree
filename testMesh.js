@@ -37,7 +37,7 @@ function updateMesh() {
     camera.lookAt(0, 0, 0);
 
     // Regenerate geometry
-    const newGeometry = ellipsoidMesh.generateGeometry(camera);
+    const newGeometry = ellipsoidMesh.updateGeometry(camera);
     mesh.geometry.dispose();
     mesh.geometry = newGeometry;
 

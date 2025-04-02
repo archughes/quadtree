@@ -72,7 +72,7 @@ function updateSliderReadouts() {
 }
 
 function setSurfacePosition() {
-    const currentGeometry = ellipsoidMesh.generateGeometry(camera);
+    const currentGeometry = ellipsoidMesh.updateGeometry(camera);
     const surfaceDistance = ellipsoidMesh.getMinDistance(camera.position);
 
     const currentDirection = camera.position.clone().normalize();
@@ -101,7 +101,7 @@ function setSurfacePosition() {
 }
 
 function updateMesh() {
-    const newGeometry = ellipsoidMesh.generateGeometry(camera);
+    const newGeometry = ellipsoidMesh.updateGeometry(camera);
     const minDistance = ellipsoidMesh.getMinDistance(cameraController.getPosition());
 
     if (!isSurfaceMode) {
@@ -184,7 +184,7 @@ function animate(time) {
 
         if (
             (timeCondition) &&
-            (moveCondition)// || rotateCondition)
+            (moveCondition || rotateCondition)
         ) {
             console.log("Updating mesh...");
             updateMesh();

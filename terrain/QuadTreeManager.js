@@ -73,14 +73,46 @@ export class QuadTreeManager {
         return leaves;
     }
 
-    /**
-     * Updates the quadtree incrementally based on camera movement and changed regions.
-     * @param {THREE.Camera} camera - Camera object
-     * @param {Array} changedRegions - Regions that need updating
-     */
-    updateTree(camera, changedRegions = []) {
-        // TODO: Implement efficient tree updating based on camera movement
-        // and specific regions that need updating
-        this.buildTree(camera); // Placeholder: full rebuild for now
+    updateTree(camera) {
+        console.time('QuadTreeManager.updateTree');
+        const changedNodes = [];
+        const prevLeaves = this.collectLeafNodes().length;
+        this._updateTreeRecursive(this.root, camera, changedNodes);
+        QuadtreeNode.balanceTree(this.root);
+        const newLeaves = this.collectLeafNodes().length;
+        console.log(`Updated quadtree: ${changedNodes.length} nodes changed (${changedNodes.map(n => `${n.action} at level ${n.node.level}`).join(', ')}), leaves: ${prevLeaves} -> ${newLeaves}`);
+        console.timeEnd('QuadTreeManager.updateTree');
+        return changedNodes;
+    }
+    
+    _updateTreeRecursive(node, camera, changedNodes) {
+        const { theta, phi } = node.getCenter();
+        const distance = this._calculateDistanceToCamera(theta, phi, camera.position, node.baseHeight);
+        const desiredLevel = this.getDesiredLevel(distance);
+        const hysteresis = 0.2 * (this.lodDistances[node.level] || this.lodDistances[this.lodDistances.length - 1]); // 20% buffer
+        const currentDistThreshold = this.lodDistances[this.maxLevel - node.level - 1] || Infinity;
+        const mergeThreshold = this.lodDistances[this.maxLevel - node.level] || 0;
+    
+        if (node.isLeaf()) {
+            if (desiredLevel > node.level && node.level < this.maxLevel && distance < currentDistThreshold - hysteresis) {
+                console.log(`Subdividing node at level ${node.level}, distance ${distance}, threshold ${currentDistThreshold}`);
+                node.subdivide(this.terrain);
+                changedNodes.push({ node, action: 'subdivide' });
+                for (const child of node.children.values()) {
+                    this._updateTreeRecursive(child, camera, changedNodes);
+                }
+            }
+        } else {
+            const allChildrenLeaves = Array.from(node.children.values()).every(child => child.isLeaf());
+            if (allChildrenLeaves && desiredLevel <= node.level && distance > mergeThreshold + hysteresis) {
+                console.log(`Merging node at level ${node.level}, distance ${distance}, threshold ${mergeThreshold}`);
+                node.children.clear();
+                changedNodes.push({ node, action: 'merge' });
+            } else {
+                for (const child of node.children.values()) {
+                    this._updateTreeRecursive(child, camera, changedNodes);
+                }
+            }
+        }
     }
 }
