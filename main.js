@@ -2,7 +2,7 @@ import * as THREE from './three.module.js';
 import { EllipsoidMesh } from './terrain/EllipsoidMesh.js';
 import { CameraController } from './CameraController.js';
 import { scene, camera, renderer } from './scene.js'; // Use updated scene.js
-import { setupInput } from './input.js';
+import { setupInput } from './controls/input.js';
 
 // Scene setup (already handled in scene.js)
 
