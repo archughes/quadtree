@@ -6,6 +6,9 @@ import { setupInput } from './controls/input.js';
 
 // Scene setup (handled in scene.js)
 
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+
 // Ellipsoid mesh
 const a = 10000, b = 10000, c = 10000;
 const quadSplits = 8;
@@ -169,6 +172,101 @@ document.addEventListener('wheel', (event) => {
         updateMesh();
     }
 });
+
+// Add this after your other event listeners
+document.addEventListener('click', onDocumentMouseClick);
+
+function onDocumentMouseClick(event) {
+    // Only proceed with left-click (button 0)
+    if (event.button !== 0) return;
+
+    // Prevent interaction if the click is on the controls div
+    const controlsDiv = document.getElementById('controls');
+    if (controlsDiv.contains(event.target)) {
+        return; // Click was on the controls, let it propagate to UI elements
+    }
+
+    event.preventDefault();
+
+    // Calculate mouse position in normalized device coordinates (-1 to +1)
+    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+    // Update the raycaster with the camera and mouse position
+    raycaster.setFromCamera(mouse, camera);
+
+    // Check for intersections with the mesh
+    const intersects = raycaster.intersectObject(mesh);
+    if (intersects.length > 0) {
+        const intersect = intersects[0]; // Take the closest intersection
+        const point = intersect.point;   // World coordinates of the click
+
+        // Convert Cartesian to spherical coordinates
+        const [theta, phi] = cartesianToSpherical(point);
+
+        // Convert to azimuth and elevation for sliders (in degrees)
+        const azimuth = THREE.MathUtils.radToDeg(phi);
+        const elevation = THREE.MathUtils.radToDeg(Math.PI / 2 - theta); // Elevation from equator
+
+        if (isSurfaceMode) {
+            // In surface mode, update camera position directly
+            const surfaceHeight = ellipsoidMesh.getSurfaceHeightAt(theta, phi);
+            const minDistance = ellipsoidMesh.getMinDistance(camera.position);
+            const currentAltitude = camera.position.length();
+            let newAltitude = Math.max(surfaceHeight + 1.5, currentAltitude, minDistance + 0.5);
+
+            const newDirection = new THREE.Vector3(
+                Math.sin(theta) * Math.cos(phi),
+                Math.sin(theta) * Math.sin(phi),
+                Math.cos(theta)
+            ).normalize();
+            camera.position.copy(newDirection.multiplyScalar(newAltitude));
+            camera.up.copy(camera.position.clone().normalize());
+
+            const tangentVec = new THREE.Vector3(
+                -ellipsoidMesh.a * Math.sin(theta) * Math.sin(phi),
+                ellipsoidMesh.b * Math.sin(theta) * Math.cos(phi),
+                0
+            ).normalize();
+            const lookAtPoint = camera.position.clone().add(tangentVec.multiplyScalar(10));
+            camera.lookAt(lookAtPoint);
+        } else {
+            // In regular mode, update sliders
+            let altitude = parseFloat(sliders.altitude.value);
+            const minDistance = ellipsoidMesh.getMinDistance(camera.position);
+
+            // Check if current altitude violates minDistance at the new position
+            const newDirection = new THREE.Vector3(
+                Math.sin(theta) * Math.cos(phi),
+                Math.sin(theta) * Math.sin(phi),
+                Math.cos(theta)
+            ).normalize();
+            const newPosition = newDirection.multiplyScalar(altitude);
+            const surfaceHeight = ellipsoidMesh.getSurfaceHeightAt(theta, phi);
+            if (altitude < surfaceHeight + minDistance) {
+                altitude = surfaceHeight + minDistance + 0.5; // Add a small buffer
+                sliders.altitude.value = altitude;
+            }
+
+            // Update sliders
+            sliders.azimuth.value = azimuth;
+            sliders.elevation.value = elevation;
+
+            // Update camera position
+            cameraController.updateFromSliders(minDistance);
+        }
+
+        updateMesh();
+    }
+}
+
+// Helper function to convert Cartesian to spherical coordinates
+function cartesianToSpherical(point) {
+    const r = point.length();
+    const theta = Math.acos(point.z / r);           // Polar angle from +z axis
+    const phi = Math.atan2(point.y, point.x);       // Azimuthal angle from +x axis
+    return [theta, phi >= 0 ? phi : phi + 2 * Math.PI]; // Ensure phi is [0, 2π]
+}
 
 // Animation loop
 let lastTime = 0;

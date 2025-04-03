@@ -67,28 +67,28 @@ export class TerrainGenerator {
         this.temperatureManager = new TerrainTemperatureManager(config);
 
         this.featureGenerators = [
-            { generator: new CraterGenerator(this.config, this.noise), maxDistance: 600, lod: null, enabled: false },
-            { generator: new VolcanoGenerator(this.config, this.noise), maxDistance: 600, lod: null, enabled: false },
-            { generator: new TectonicPlateGenerator(this.config, this.noise), maxDistance: 600, lod: null, enabled: false },
-            { generator: new VastPlainsGenerator(this.config, this.noise), maxDistance: 600, lod: null, enabled: false },
-            { generator: new MagneticAnomalyGenerator(this.config, this.noise), maxDistance: 600, lod: null, enabled: false },
-            { generator: new LavaFlowGenerator(this.config, this.noise), maxDistance: 600, lod: null, enabled: false },
-            { generator: new DesertPavementGenerator(this.config, this.noise), maxDistance: 600, lod: null, enabled: false },
-            { generator: new SandDuneGenerator(this.config, this.noise), maxDistance: 200, lod: null, enabled: false },
-            { generator: new GlacialFeatureGenerator(this.config, this.noise), maxDistance: 200, lod: null, enabled: false },
-            { generator: new KarstTopographyGenerator(this.config, this.noise), maxDistance: 200, lod: null, enabled: false },
-            { generator: new WetlandGenerator(this.config, this.noise), maxDistance: 200, lod: null, enabled: false },
-            { generator: new PermafrostGenerator(this.config, this.noise), maxDistance: 200, lod: null, enabled: false },
-            { generator: new OasisGenerator(this.config, this.noise), maxDistance: 200, lod: null, enabled: false },
-            { generator: new FoothillGenerator(this.config, this.noise), maxDistance: 100, lod: null, enabled: false },
-            { generator: new ValleyAndRiverGenerator(this.config, this.noise), maxDistance: 100, lod: null, enabled: false },
-            { generator: new CoralReefGenerator(this.config, this.noise), maxDistance: 100, lod: null, enabled: false },
-            { generator: new FumaroleGenerator(this.config, this.noise), maxDistance: 100, lod: null, enabled: false }
+            { generator: new CraterGenerator(this.config, this.noise), maxDistance: 1200, lod: null, enabled: false },
+            { generator: new VolcanoGenerator(this.config, this.noise), maxDistance: 1200, lod: null, enabled: false },
+            { generator: new TectonicPlateGenerator(this.config, this.noise), maxDistance: 1200, lod: null, enabled: false },
+            { generator: new VastPlainsGenerator(this.config, this.noise), maxDistance: 1200, lod: null, enabled: false },
+            { generator: new MagneticAnomalyGenerator(this.config, this.noise), maxDistance: 1200, lod: null, enabled: false },
+            { generator: new LavaFlowGenerator(this.config, this.noise), maxDistance: 1200, lod: null, enabled: false },
+            { generator: new DesertPavementGenerator(this.config, this.noise), maxDistance: 1200, lod: null, enabled: false },
+            { generator: new SandDuneGenerator(this.config, this.noise), maxDistance: 400, lod: null, enabled: false },
+            { generator: new GlacialFeatureGenerator(this.config, this.noise), maxDistance: 400, lod: null, enabled: false },
+            { generator: new KarstTopographyGenerator(this.config, this.noise), maxDistance: 400, lod: null, enabled: false },
+            { generator: new WetlandGenerator(this.config, this.noise), maxDistance: 400, lod: null, enabled: false },
+            { generator: new PermafrostGenerator(this.config, this.noise), maxDistance: 400, lod: null, enabled: false },
+            { generator: new OasisGenerator(this.config, this.noise), maxDistance: 400, lod: null, enabled: false },
+            { generator: new FoothillGenerator(this.config, this.noise), maxDistance: 200, lod: null, enabled: false },
+            { generator: new ValleyAndRiverGenerator(this.config, this.noise), maxDistance: 200, lod: null, enabled: false },
+            { generator: new CoralReefGenerator(this.config, this.noise), maxDistance: 200, lod: null, enabled: false },
+            { generator: new FumaroleGenerator(this.config, this.noise), maxDistance: 200, lod: null, enabled: false }
         ];
 
         // Dynamically determine LOD levels from unique maxDistance values
         const uniqueDistances = [...new Set(this.featureGenerators.map(fg => fg.maxDistance))].sort((a, b) => b - a);
-        this.LOD = [1200, ...uniqueDistances]; // Planetary scale + feature distances
+        this.LOD = [2400, ...uniqueDistances]; // Planetary scale + feature distances
 
         // Assign LOD indices to feature generators
         this.featureGenerators.forEach(fg => {

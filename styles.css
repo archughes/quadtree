@@ -15,6 +15,12 @@ body {
     border-radius: 5px;
     z-index: 100; /* Ensures it stays above the canvas */
     font-family: Arial, sans-serif;
+    pointer-events: auto;
+    cursor: pointer;
+}
+
+canvas {
+    pointer-events: auto;
 }
 
 #controls label {
