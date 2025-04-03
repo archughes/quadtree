@@ -1,27 +1,20 @@
 import * as THREE from './three.module.js';
 import { EllipsoidMesh } from './terrain/EllipsoidMesh.js';
 import { CameraController } from './CameraController.js';
-import { scene, camera, renderer } from './scene.js'; // Use updated scene.js
+import { scene, camera, renderer } from './scene.js';
 import { setupInput } from './controls/input.js';
 
-// Scene setup (already handled in scene.js)
+// Scene setup (handled in scene.js)
 
 // Ellipsoid mesh
-const terrainConfig = {
-    baseFrequency: 1,
-    baseAmplitude: 0.1,
-    detailFrequency: 2,
-    detailAmplitude: 0.05,
-    octaves: 3
-};
-const a = 500, b = 500, c = 500;
+const a = 10000, b = 10000, c = 10000;
 const quadSplits = 8;
 const ellipsoidRadius = new THREE.Vector3(a, b, c).length();
 const lodDistances = linspace(50, 2 * ellipsoidRadius, quadSplits);
 console.log('quadSplits of ' + quadSplits + ' [' + lodDistances + '] of expected max resolution: ' + ellipsoidRadius / Math.pow(2, quadSplits));
 const ellipsoidMesh = new EllipsoidMesh(
-    a, b, c, // last is equator with 0 incident light
-    lodDistances, 
+    a, b, c,
+    lodDistances,
     'planetSeed123'
 );
 
@@ -51,20 +44,40 @@ sliders.altitude.value = maxAltitude / 2;
 const cameraController = new CameraController(camera, sliders);
 const inputControls = setupInput(cameraController, ellipsoidMesh);
 
-// Toggle button
+// UI elements
 const controlsDiv = document.getElementById('controls');
-const toggleButton = document.createElement('button');
-toggleButton.textContent = 'Toggle Surface Mode';
-controlsDiv.appendChild(toggleButton);
-
-// Slider readouts
+const featureDropdown = document.getElementById('feature-toggle');
+const featureSwitch = document.getElementById('feature-switch');
+const regenerateButton = document.getElementById('regenerate');
+const surfaceModeSwitch = document.getElementById('surface-mode-switch');
 const azimuthValue = document.getElementById('azimuth-value');
 const elevationValue = document.getElementById('elevation-value');
 const altitudeValue = document.getElementById('altitude-value');
 
+// Populate feature dropdown
+const featureNames = [
+    'CraterGenerator', 'VolcanoGenerator', 'TectonicPlateGenerator', 'VastPlainsGenerator',
+    'MagneticAnomalyGenerator', 'LavaFlowGenerator', 'DesertPavementGenerator', 'SandDuneGenerator',
+    'GlacialFeatureGenerator', 'KarstTopographyGenerator', 'WetlandGenerator', 'PermafrostGenerator',
+    'OasisGenerator', 'FoothillGenerator', 'ValleyAndRiverGenerator', 'CoralReefGenerator', 'FumaroleGenerator'
+];
+featureNames.forEach(name => {
+    const option = document.createElement('option');
+    option.value = name;
+    option.textContent = name.replace('Generator', '');
+    featureDropdown.appendChild(option);
+});
+
+// Update feature switch state on dropdown change
+featureDropdown.addEventListener('change', () => {
+    const selectedFeature = featureDropdown.value;
+    featureSwitch.checked = ellipsoidMesh.getFeatureState(selectedFeature);
+});
+
 // Surface mode state
 let isSurfaceMode = false;
 
+// Update slider readouts
 function updateSliderReadouts() {
     azimuthValue.textContent = sliders.azimuth.value;
     elevationValue.textContent = sliders.elevation.value;
@@ -81,14 +94,9 @@ function setSurfacePosition() {
     const surfaceHeight = ellipsoidMesh.getSurfaceHeightAt(theta, phi);
     console.log('Surface height:', surfaceHeight);
 
-    // Set camera position
-    camera.position.copy(currentDirection.multiplyScalar(surfaceHeight + 1.5)); // Match minHeightAboveSurface
+    camera.position.copy(currentDirection.multiplyScalar(Math.max(surfaceHeight + 1.5, surfaceDistance)));
+    camera.up.copy(camera.position.clone().normalize());
 
-    // Set camera up direction to surface normal
-    const normal = camera.position.clone().normalize();
-    camera.up.copy(normal);
-
-    // Set initial forward direction (tangent to surface)
     const tangentVec = new THREE.Vector3(
         -ellipsoidMesh.a * Math.sin(theta) * Math.sin(phi),
         ellipsoidMesh.b * Math.sin(theta) * Math.cos(phi),
@@ -105,6 +113,7 @@ function updateMesh() {
     const minDistance = ellipsoidMesh.getMinDistance(cameraController.getPosition());
 
     if (!isSurfaceMode) {
+        console.log('Min distance:', minDistance);
         cameraController.updateFromSliders(minDistance);
     }
 
@@ -113,8 +122,16 @@ function updateMesh() {
     updateSliderReadouts();
 }
 
-toggleButton.addEventListener('click', () => {
-    isSurfaceMode = !isSurfaceMode;
+// Toggle feature generator
+featureSwitch.addEventListener('change', () => {
+    const selectedFeature = featureDropdown.value;
+    ellipsoidMesh.toggleFeatureGenerator(selectedFeature, featureSwitch.checked);
+    updateMesh();
+});
+
+// Toggle surface mode
+surfaceModeSwitch.addEventListener('change', () => {
+    isSurfaceMode = surfaceModeSwitch.checked;
     if (isSurfaceMode) {
         sliders.azimuth.disabled = true;
         sliders.elevation.disabled = true;
@@ -127,19 +144,38 @@ toggleButton.addEventListener('click', () => {
         cameraController.updateFromSliders(ellipsoidMesh.getMinDistance(camera.position));
         updateMesh();
     }
-    toggleButton.textContent = isSurfaceMode ? 'Exit Surface Mode' : 'Toggle Surface Mode';
 });
 
+// Regenerate terrain
+regenerateButton.addEventListener('click', () => {
+    ellipsoidMesh.regenerateTerrain();
+    updateMesh();
+});
+
+
+// Slider events
 sliders.azimuth.addEventListener('input', updateMesh);
 sliders.elevation.addEventListener('input', updateMesh);
 sliders.altitude.addEventListener('input', updateMesh);
+
+// Mouse wheel zoom
+document.addEventListener('wheel', (event) => {
+    if (!isSurfaceMode) {
+        const sensitivity = maxAltitude / 1000; // Scale with range (e.g., 0.02 for maxAltitude=20000)
+        const delta = event.deltaY * sensitivity;
+        let newAltitude = parseFloat(sliders.altitude.value) + delta;
+        newAltitude = Math.max(0, Math.min(maxAltitude, newAltitude));
+        sliders.altitude.value = newAltitude;
+        updateMesh();
+    }
+});
 
 // Animation loop
 let lastTime = 0;
 let lastCameraPosition = camera.position.clone();
 let lastCameraQuaternion = camera.quaternion.clone();
 let lastUpdateTime = 0;
-const updateInterval = 1000; // ~1 FPS (1000ms)
+const updateInterval = 1000; // ~1 FPS
 const rotationThreshold = 20; // Degrees
 const distanceThreshold = 10; // Units
 
@@ -152,19 +188,15 @@ function animate(time) {
         inputControls.updateCamera(delta, isSurfaceMode);
 
         const now = performance.now();
-
-        // Calculate rotation difference in degrees
         const qCurrent = camera.quaternion.clone();
         const qDiff = qCurrent.clone().multiply(lastCameraQuaternion.conjugate());
-        let angleDiff;
         const epsilon = 0.0001;
+        let angleDiff;
         if (Math.abs(1 - Math.abs(qDiff.w)) < epsilon) {
             angleDiff = 0;
         } else {
             angleDiff = 2 * Math.acos(Math.abs(qDiff.w)) * (180 / Math.PI);
         }
-
-        // Calculate distance moved since last update
         const distanceMoved = lastCameraPosition.distanceTo(camera.position);
 
         // // Log conditions for debugging
@@ -184,18 +216,19 @@ function animate(time) {
 
         if (
             (timeCondition) &&
-            (moveCondition || rotateCondition)
+            (moveCondition)// || rotateCondition)
         ) {
             console.log("Updating mesh...");
             updateMesh();
             lastCameraPosition.copy(camera.position);
             lastCameraQuaternion.copy(camera.quaternion);
             lastUpdateTime = now;
-        } else {
-            // Log why update didn't happen
-            if (!timeCondition) console.log("Blocked by time condition");
-            if (!moveCondition && !rotateCondition) console.log("Blocked by movement/rotation thresholds");
         }
+        // else {
+        //     // Log why update didn't happen
+        //     if (!timeCondition) console.log("Blocked by time condition");
+        //     if (!moveCondition && !rotateCondition) console.log("Blocked by movement/rotation thresholds");
+        // }
     }
 
     renderer.render(scene, camera);

@@ -40,7 +40,7 @@ export class TerrainColorManager {
             desert_pavement: [100, 90, 80],// Dark stony grey
             oasis: [50, 150, 100],         // Green (vegetation)
             fumarole: [220, 180, 100],     // Yellow-orange
-            underwater: [0, 0, 0]          // Placeholder
+            underwater: [60, 100, 240]      // Blueish
         };
     }
 
@@ -52,8 +52,12 @@ export class TerrainColorManager {
      * @returns {number[]} - RGB color array (0-255)
      */
     getColor(terrainData, theta, phi) {
-        const { height, features, temperature } = terrainData;
+        const { height, features, temperature, biome } = terrainData;
         let baseColor = [150, 150, 150];
+
+        if (biome) {
+            baseColor = this.colorDefinitions[biome] || baseColor;
+        }
 
         if (features.length > 0) {
             const primaryFeature = features[0];

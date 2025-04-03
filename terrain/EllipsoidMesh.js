@@ -33,7 +33,7 @@ export class EllipsoidMesh {
         this.indices = [];
         this.rng = createSeededRNG(seed);
         this.noise = createNoise2D(() => this.rng.random());
-        this.terrain = new TerrainGenerator(this.noise, seed, terrainConfig);
+        this.terrain = new TerrainGenerator(this.noise, seed, terrainConfig, a, b, c, this.rng);
         this.treeManager.terrain = this.terrain;
         this.terrainColorManager = new TerrainColorManager();
         this.terrainColorManager.setConfig(this.terrain.config, this.noise);
@@ -44,6 +44,11 @@ export class EllipsoidMesh {
             heightValues: [],
             featureMap: new Map()
         };
+
+        // Delegation Methods
+        this.toggleFeatureGenerator = (name, enabled) => this.terrain.toggleFeatureGenerator(name, enabled);
+        this.regenerateTerrain = () => this.terrain.regenerateTerrain();
+        this.getFeatureState = (name) => this.terrain.getFeatureState(name);
     }
 
     /**
@@ -113,8 +118,7 @@ export class EllipsoidMesh {
         const key = this.getVertexKey(theta, phi);
         if (this.vertexMap.has(key)) {
             const index = this.vertexMap.get(key);
-            const distance = this.treeManager._calculateDistanceToCamera(theta, phi, cameraPos, baseHeightData);
-            const [newVertex] = this.mapToEllipsoid(theta, phi, distance);
+            const newVertex = this.getSurfaceHeightAt(theta, phi);
             const oldX = positions[index * 3], oldY = positions[index * 3 + 1], oldZ = positions[index * 3 + 2];
             if (Math.abs(newVertex.x - oldX) > 1e-6 || Math.abs(newVertex.y - oldY) > 1e-6 || Math.abs(newVertex.z - oldZ) > 1e-6) {
                 console.warn(`Vertex position changed for key=${key}: old=(${oldX},${oldY},${oldZ}), new=(${newVertex.x},${newVertex.y},${newVertex.z})`);
@@ -190,7 +194,7 @@ export class EllipsoidMesh {
                 const vertexPos = new THREE.Vector3(x, y, z);
                 return vertexPos.length();
             }
-            console.warn(`Vertex not found for key=${key}, computing height as fallback`);
+            // console.warn(`Vertex not found for key=${key}, computing height as fallback`);
             const [thetaPart, phiPart] = key.split(':')[1].split(',').map(Number);
             const [surfacePos] = this.mapToEllipsoid(thetaPart, phiPart, this.lodDistances[0]);
             return surfacePos.length();
@@ -218,7 +222,7 @@ export class EllipsoidMesh {
      */
     getMinDistance(cameraPos) {
         const positions = this.positions;
-        if (!positions.length) return 2;
+        if (!positions.length) return null;
         let minDist = Infinity;
         let setDist = Infinity;
         const tempVec = new THREE.Vector3();
@@ -283,10 +287,10 @@ export class EllipsoidMesh {
         geometry.setIndex(this.indices);
         geometry.computeVertexNormals();
         
-        // // Log analytics data using the utility function
-        // console.log("===== MESH GENERATION ANALYTICS =====");
-        // logAnalytics(this.analyticsData);
-        // console.log("===== END ANALYTICS =====");
+        // Log analytics data using the utility function
+        console.log("===== MESH GENERATION ANALYTICS =====");
+        logAnalytics(this.analyticsData);
+        console.log("===== END ANALYTICS =====");
         
         return geometry;
     }
@@ -302,7 +306,7 @@ export class EllipsoidMesh {
 
         this.treeManager.updateTree(camera);
         const leaves = this.treeManager.collectLeafNodes();
-        console.log(`Processing ${leaves.length} leaves for geometry update`);
+        // console.log(`Processing ${leaves.length} leaves for geometry update`);
 
         const geometry = this.geometry || new THREE.BufferGeometry();
         if (!this.geometry) {
@@ -333,13 +337,13 @@ export class EllipsoidMesh {
             const phiCenter = (leaf.phiMin + leaf.phiMax) / 2;
             const leafPos = this.mapToBaseEllipsoid(thetaCenter, phiCenter);
 
-            // Frustum culling: skip if outside 100° FOV
-            const cameraToLeaf = leafPos.clone().sub(camera.position).normalize();
-            const angle = Math.acos(cameraForward.dot(cameraToLeaf)) * (180 / Math.PI);
-            if (angle > 100) { // Adjust FOV threshold as needed (e.g., match camera.fov * 1.2)
-                culledLeaves++;
-                continue;
-            }
+            // // Frustum culling: skip if outside 100° FOV
+            // const cameraToLeaf = leafPos.clone().sub(camera.position).normalize();
+            // const angle = Math.acos(cameraForward.dot(cameraToLeaf)) * (180 / Math.PI);
+            // if (angle > 100) { // Adjust FOV threshold as needed (e.g., match camera.fov * 1.2)
+            //     culledLeaves++;
+            //     continue;
+            // }
 
             // Backside culling: skip if leaf is on far side
             const cameraToLeafDist = camera.position.distanceTo(leafPos);
@@ -369,11 +373,11 @@ export class EllipsoidMesh {
         geometry.computeVertexNormals();
 
         const endTime = performance.now();
-        console.log(`Updated geometry with ${this.positions.length / 3} vertices and ${this.indices.length / 3} triangles`);
-        console.log(`Max LOD all leaves: ${Math.max(...leaves.map(leaf => leaf.level))}`);
-        console.log(`Culled ${culledLeaves} of ${leaves.length} leaves (${((culledLeaves / leaves.length) * 100).toFixed(1)}%)`);
-        console.timeEnd('EllipsoidMesh.updateGeometry');
-        console.log(`Update took ${(endTime - startTime).toFixed(2)} ms`);
+        // console.log(`Updated geometry with ${this.positions.length / 3} vertices and ${this.indices.length / 3} triangles`);
+        // console.log(`Max LOD all leaves: ${Math.max(...leaves.map(leaf => leaf.level))}`);
+        // console.log(`Culled ${culledLeaves} of ${leaves.length} leaves (${((culledLeaves / leaves.length) * 100).toFixed(1)}%)`);
+        // console.timeEnd('EllipsoidMesh.updateGeometry');
+        // console.log(`Update took ${(endTime - startTime).toFixed(2)} ms`);
 
         this.geometry = geometry;
         return geometry;

@@ -46,6 +46,7 @@ export class CameraController {
      * @param {number} minDistance - Minimum distance to mesh
      */
     updateFromSliders(minDistance) {
+        if (!minDistance) return;
         this.minDistance = minDistance;
         this.values.azimuthAngle = (this.sliders.azimuth.value / 180) * Math.PI;
         this.values.elevationAngle = (this.sliders.elevation.value / 180) * Math.PI;

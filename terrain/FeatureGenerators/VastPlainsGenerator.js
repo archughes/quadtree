@@ -19,6 +19,8 @@ export class VastPlainsGenerator extends FeatureGenerator {
         if (!this.canApplyWith(existingFeatures) || !this.canApplyWithout(existingFeatures)) {
             return { heightAdjustment: 0, featureLabel: null };
         }
+        theta = theta * this.config.planetaryScale;
+        phi = phi * this.config.planetaryScale;
         const modifier = biomeManager.getFeatureModifier(biome, 'plain');
         const plainLocationNoise = this.noise(theta * 0.5, phi * 0.5 + 7000);
         const minThreshold = 0.2 / modifier; // Highland: 0.4 -> higher threshold, less likely

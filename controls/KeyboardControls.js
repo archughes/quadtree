@@ -27,7 +27,7 @@ export class KeyboardControls {
             case "KeyS": this.moveBackward = true; break;
             case "KeyA": this.moveLeft = true; break;
             case "KeyD": this.moveRight = true; break;
-            case "ShiftLeft": this.cameraSpeed = 10; break;
+            case "ShiftLeft": this.cameraSpeed = 60; break;
             case "Space":
                 if (!this.isJumping) {
                     this.jumpVelocity = this.jumpHeight;
@@ -43,7 +43,7 @@ export class KeyboardControls {
             case "KeyS": this.moveBackward = false; break;
             case "KeyA": this.moveLeft = false; break;
             case "KeyD": this.moveRight = false; break;
-            case "ShiftLeft": this.cameraSpeed = 5; break;
+            case "ShiftLeft": this.cameraSpeed = 30; break;
         }
     }
 }
